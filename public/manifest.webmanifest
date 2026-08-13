@@ -1,0 +1,26 @@
+{
+  "name": "知识库智能助手",
+  "short_name": "知识问答",
+  "description": "查询内部制度、产品文档和操作手册的企业知识入口",
+  "lang": "zh-CN",
+  "start_url": "/portal?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f2f5f4",
+  "theme_color": "#123047",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "any",
+      "type": "image/x-icon",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "员工知识问答",
+      "short_name": "知识问答",
+      "url": "/portal?target=knowledge&source=shortcut"
+    }
+  ]
+}
