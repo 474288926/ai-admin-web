@@ -11,8 +11,11 @@ import {
 } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 
+import AiModelSelector from '@/components/AiModelSelector.vue'
+import AiUsageBadge from '@/components/AiUsageBadge.vue'
 import * as assistantApi from '@/services/api/assistant'
 import { ApiError } from '@/services/api/client'
+import { budgetDecisionMessage, providerFailoverMessage } from '@/services/ai-usage'
 import * as knowledgeBaseApi from '@/services/api/knowledge-bases'
 import {
   buildSupportQuestion,
@@ -32,6 +35,7 @@ const embedded = window.self !== window.top
 const context = ref<SupportTicketContext | null>(null)
 const sourceOrigin = ref('')
 const selectedKnowledgeBaseId = ref('')
+const selectedModelId = ref('')
 const answer = ref<ConversationMessage | null>(null)
 const confirmationVisible = ref(false)
 const humanConfirmed = ref(false)
@@ -80,7 +84,11 @@ const generateMutation = useMutation({
       knowledgeBaseId: selectedKnowledgeBaseId.value,
       title: `工单 ${contextSnapshot.ticketId}`.slice(0, 42),
     })
-    const result = await assistantApi.sendMessage(conversation.id, question)
+    const result = await assistantApi.sendMessage(
+      conversation.id,
+      question,
+      selectedModelId.value || undefined,
+    )
     return { requestId: contextSnapshot.requestId, result }
   },
 })
@@ -100,6 +108,10 @@ async function generateSuggestion(): Promise<void> {
       ElMessage.info('工单已切换，已忽略上一工单的生成结果')
       return
     }
+    const budgetNotice = budgetDecisionMessage(result.modelSelection)
+    if (budgetNotice) ElMessage.warning(budgetNotice)
+    const failoverNotice = providerFailoverMessage(result.providerFailover)
+    if (failoverNotice) ElMessage.warning(failoverNotice)
     answer.value = result.assistantMessage
     selectedCitation.value = result.assistantMessage.citations?.[0] ?? null
     humanConfirmed.value = false
@@ -289,6 +301,7 @@ onBeforeUnmount(() => window.removeEventListener('message', handleWorkbenchMessa
           :value="item.id"
         />
       </el-select>
+      <AiModelSelector v-model="selectedModelId" />
     </section>
 
     <section v-if="context" class="support-embed-question">
@@ -313,6 +326,7 @@ onBeforeUnmount(() => window.removeEventListener('message', handleWorkbenchMessa
       <header>
         <div>
           <el-icon><CircleCheck /></el-icon><strong>建议对客回复</strong>
+          <AiUsageBadge :provider="answer.provider" :model="answer.model" :usage="answer.usage" />
         </div>
         <el-button :icon="CopyDocument" link @click="copyReply">复制</el-button>
       </header>

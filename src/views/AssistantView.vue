@@ -17,8 +17,12 @@ import {
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
+import AiModelSelector from '@/components/AiModelSelector.vue'
+import AiConversationUsage from '@/components/AiConversationUsage.vue'
+import AiUsageBadge from '@/components/AiUsageBadge.vue'
 import { ApiError } from '@/services/api/client'
 import * as assistantApi from '@/services/api/assistant'
+import { budgetDecisionMessage, providerFailoverMessage } from '@/services/ai-usage'
 import * as knowledgeBaseApi from '@/services/api/knowledge-bases'
 import {
   buildTicketEscalationDraft,
@@ -38,6 +42,7 @@ import type {
 const queryClient = useQueryClient()
 const selectedKnowledgeBaseId = ref('')
 const selectedConversationId = ref('')
+const selectedModelId = ref('')
 const draft = ref('')
 const conversationSearch = ref('')
 const selectedCitation = ref<Citation | null>(null)
@@ -98,7 +103,11 @@ const sendMutation = useMutation({
         title: content.slice(0, 42),
       })
     }
-    const result = await assistantApi.sendMessage(conversation.id, content)
+    const result = await assistantApi.sendMessage(
+      conversation.id,
+      content,
+      selectedModelId.value || undefined,
+    )
     return { conversation, result }
   },
 })
@@ -163,8 +172,12 @@ async function send(): Promise<void> {
   if (!content || !selectedKnowledgeBaseId.value || sendMutation.isPending.value) return
   draft.value = ''
   try {
-    const { conversation } = await sendMutation.mutateAsync(content)
+    const { conversation, result } = await sendMutation.mutateAsync(content)
     selectedConversationId.value = conversation.id
+    const budgetNotice = budgetDecisionMessage(result.modelSelection)
+    if (budgetNotice) ElMessage.warning(budgetNotice)
+    const failoverNotice = providerFailoverMessage(result.providerFailover)
+    if (failoverNotice) ElMessage.warning(failoverNotice)
     await nextTick()
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['assistant-conversations'] }),
@@ -427,7 +440,10 @@ function formatTime(value: string): string {
               ><small>{{ selectedKnowledgeBase?.name || '请选择知识库' }}</small>
             </div>
           </div>
-          <el-tag effect="plain">仅使用已授权资料</el-tag>
+          <div class="assistant-chat-head-actions">
+            <AiConversationUsage :messages="messages" />
+            <el-tag effect="plain">仅使用已授权资料</el-tag>
+          </div>
         </header>
 
         <div class="assistant-message-list">
@@ -459,6 +475,12 @@ function formatTime(value: string): string {
               <div class="assistant-message-meta">
                 <strong>{{ message.role === 'USER' ? '客服提问' : '知识助手' }}</strong
                 ><span>{{ formatTime(message.createdAt) }}</span
+                ><AiUsageBadge
+                  v-if="message.role === 'ASSISTANT' && (message.provider || message.usage)"
+                  :provider="message.provider"
+                  :model="message.model"
+                  :usage="message.usage"
+                />
                 ><el-tag v-if="message.structuredResponse" size="small" effect="plain">{{
                   scenarioLabel(message.structuredResponse.scenario)
                 }}</el-tag>
@@ -617,15 +639,18 @@ function formatTime(value: string): string {
             @keydown="handleComposerKeydown"
           />
           <div>
-            <span>AI 建议需结合实际业务判断后发送给客户</span
-            ><el-button
-              type="primary"
-              :icon="Promotion"
-              :loading="sendMutation.isPending.value"
-              :disabled="!draft.trim() || !selectedKnowledgeBaseId"
-              @click="send"
-              >发送问题</el-button
-            >
+            <span>AI 建议需结合实际业务判断后发送给客户</span>
+            <div class="assistant-composer-actions">
+              <AiModelSelector v-model="selectedModelId" />
+              <el-button
+                type="primary"
+                :icon="Promotion"
+                :loading="sendMutation.isPending.value"
+                :disabled="!draft.trim() || !selectedKnowledgeBaseId"
+                @click="send"
+                >发送问题</el-button
+              >
+            </div>
           </div>
         </footer>
       </main>
