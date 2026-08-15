@@ -2,8 +2,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
   createConversation,
+  getAiProviderHealthSummary,
+  getAiUsageSummary,
+  listAiModels,
   listConversations,
   listMessages,
+  retryAiProviderAlertDelivery,
+  sendAiProviderAlertTest,
   sendMessage,
   upsertMessageFeedback,
 } from '@/services/api/assistant'
@@ -88,6 +93,261 @@ const pagination = { page: 1, pageSize: 100, total: 1, totalPages: 1, hasNextPag
 afterEach(() => vi.unstubAllGlobals())
 
 describe('assistant api', () => {
+  it('loads the enabled AI models for the selector', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify([
+          {
+            id: 'qwen',
+            provider: 'qwen',
+            displayName: '千问（阿里云百炼）',
+            isDefault: true,
+            pricing: {
+              currency: 'CNY',
+              inputPerMillionTokens: 2,
+              cachedInputPerMillionTokens: 2,
+              outputPerMillionTokens: 8,
+              effectiveDate: '2026-08-14',
+            },
+          },
+        ]),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(listAiModels()).resolves.toEqual([
+      {
+        id: 'qwen',
+        provider: 'qwen',
+        displayName: '千问（阿里云百炼）',
+        isDefault: true,
+        pricing: {
+          currency: 'CNY',
+          inputPerMillionTokens: 2,
+          cachedInputPerMillionTokens: 2,
+          outputPerMillionTokens: 8,
+          effectiveDate: '2026-08-14',
+        },
+      },
+    ])
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/ai/models'),
+      expect.any(Object),
+    )
+  })
+
+  it('loads and validates the current user monthly usage report', async () => {
+    const response = {
+      month: '2026-08',
+      timeZone: 'Asia/Shanghai',
+      budgetPolicy: {
+        warningRatio: 0.8,
+        fallbackRatio: 1,
+        autoFallbackEnabled: true,
+      },
+      totals: {
+        callCount: 2,
+        inputTokens: 1000,
+        outputTokens: 500,
+        totalTokens: 1500,
+        cachedInputTokens: 200,
+        reasoningOutputTokens: 50,
+      },
+      costs: [{ currency: 'CNY', amount: 0.0058, budget: 10, usageRatio: 0.00058 }],
+      byModel: [
+        {
+          provider: 'qwen',
+          model: 'qwen-demo',
+          callCount: 2,
+          inputTokens: 1000,
+          outputTokens: 500,
+          totalTokens: 1500,
+          cachedInputTokens: 200,
+          reasoningOutputTokens: 50,
+          cost: { currency: 'CNY', amount: 0.0058 },
+        },
+      ],
+      daily: [
+        {
+          date: '2026-08-14',
+          callCount: 2,
+          inputTokens: 1000,
+          outputTokens: 500,
+          totalTokens: 1500,
+          cachedInputTokens: 200,
+          reasoningOutputTokens: 50,
+          costs: [{ currency: 'CNY', amount: 0.0058 }],
+        },
+      ],
+    }
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      new Response(JSON.stringify(response), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(getAiUsageSummary('2026-08')).resolves.toEqual(response)
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/ai/usage/summary?month=2026-08'),
+      expect.any(Object),
+    )
+  })
+
+  it('loads and validates provider health and failover counters', async () => {
+    const response = {
+      period: {
+        days: 7,
+        from: '2026-08-08',
+        to: '2026-08-14',
+        timeZone: 'Asia/Shanghai',
+      },
+      totals: {
+        requests: 11,
+        successes: 10,
+        failures: 1,
+        successRate: 0.9091,
+        averageDurationMs: 320,
+        failovers: 1,
+      },
+      models: [
+        {
+          modelId: 'qwen',
+          provider: 'qwen',
+          displayName: '千问（阿里云百炼）',
+          status: 'degraded',
+          circuitOpen: false,
+          circuitRetryAfterSeconds: null,
+          requests: 11,
+          successes: 10,
+          failures: 1,
+          successRate: 0.9091,
+          averageDurationMs: 320,
+          failovers: 1,
+          timeoutCount: 1,
+          rateLimitCount: 0,
+          unavailableCount: 0,
+          providerErrorCount: 0,
+          failoverOutCount: 1,
+          failoverInCount: 0,
+          lastActivityDate: '2026-08-14',
+        },
+      ],
+      daily: [
+        {
+          date: '2026-08-14',
+          requests: 11,
+          successes: 10,
+          failures: 1,
+          successRate: 0.9091,
+          averageDurationMs: 320,
+          failovers: 1,
+        },
+      ],
+      incidents: [
+        {
+          id: '550e8400-e29b-41d4-a716-446655440000',
+          type: 'circuit_opened',
+          modelId: 'qwen',
+          occurredAt: '2026-08-14T12:00:00.000Z',
+          reason: 'timeout',
+          failureCount: 3,
+          openSeconds: 60,
+        },
+      ],
+      alertDeliveries: [
+        {
+          id: '550e8400-e29b-41d4-a716-446655440001',
+          incidentId: '550e8400-e29b-41d4-a716-446655440000',
+          incidentType: 'circuit_opened',
+          modelId: 'qwen',
+          incidentOccurredAt: '2026-08-14T12:00:00.000Z',
+          reason: 'timeout',
+          failureCount: 3,
+          openSeconds: 60,
+          attempt: 1,
+          trigger: 'initial',
+          retriedFromDeliveryId: null,
+          attemptedAt: '2026-08-14T12:00:01.000Z',
+          status: 'delivered',
+          channel: 'generic',
+          statusCode: 204,
+          failureReason: null,
+        },
+      ],
+    }
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      new Response(JSON.stringify(response), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(getAiProviderHealthSummary(7)).resolves.toEqual(response)
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/ai/health/summary?days=7'),
+      expect.any(Object),
+    )
+  })
+
+  it('sends and validates a provider test alert', async () => {
+    const response = {
+      status: 'delivered',
+      channel: 'generic',
+      statusCode: 204,
+      failureReason: null,
+      incidentType: 'circuit_opened',
+      modelId: 'qwen',
+    }
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      new Response(JSON.stringify(response), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(
+      sendAiProviderAlertTest({ modelId: 'qwen', type: 'circuit_opened' }),
+    ).resolves.toEqual(response)
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/ai/health/alerts/test'),
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ modelId: 'qwen', type: 'circuit_opened' }),
+      }),
+    )
+  })
+
+  it('retries a failed provider alert delivery through the authenticated API', async () => {
+    const deliveryId = '550e8400-e29b-41d4-a716-446655440001'
+    const response = {
+      status: 'delivered',
+      channel: 'generic',
+      statusCode: 204,
+      failureReason: null,
+      incidentType: 'circuit_opened',
+      modelId: 'qwen',
+      retriedFromDeliveryId: deliveryId,
+    }
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      new Response(JSON.stringify(response), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(retryAiProviderAlertDelivery(deliveryId)).resolves.toEqual(response)
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining(`/ai/health/alerts/deliveries/${deliveryId}/retry`),
+      expect.objectContaining({ method: 'POST' }),
+    )
+  })
+
   it('loads conversations and messages with citations and structured customer reply', async () => {
     const fetchMock = vi
       .fn()
@@ -133,10 +393,31 @@ describe('assistant api', () => {
         }),
       )
       .mockResolvedValueOnce(
-        new Response(JSON.stringify({ userMessage, assistantMessage, replayed: false }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        }),
+        new Response(
+          JSON.stringify({
+            userMessage,
+            assistantMessage,
+            replayed: false,
+            modelSelection: {
+              requestedModelId: 'deepseek',
+              effectiveModelId: 'deepseek',
+              status: 'warning',
+              currency: 'USD',
+              spent: 0.8,
+              budget: 1,
+              usageRatio: 0.8,
+            },
+            providerFailover: {
+              fromModelId: 'deepseek',
+              toModelId: 'qwen',
+              reason: 'rate_limited',
+            },
+          }),
+          {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          },
+        ),
       )
       .mockResolvedValueOnce(
         new Response(JSON.stringify(feedback), {
@@ -147,7 +428,7 @@ describe('assistant api', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     await createConversation({ knowledgeBaseId, title: '网络故障排查' })
-    await sendMessage(conversationId, '设备无法联网怎么办？')
+    const sendResult = await sendMessage(conversationId, '设备无法联网怎么办？', 'deepseek')
     await upsertMessageFeedback(conversationId, assistantMessageId, { rating: 'HELPFUL' })
 
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toMatchObject({
@@ -155,7 +436,10 @@ describe('assistant api', () => {
     })
     expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toMatchObject({
       mode: 'standard',
+      modelId: 'deepseek',
     })
+    expect(sendResult.modelSelection?.status).toBe('warning')
+    expect(sendResult.providerFailover?.toModelId).toBe('qwen')
     expect(JSON.parse(String(fetchMock.mock.calls[2]?.[1]?.body))).toMatchObject({
       rating: 'HELPFUL',
     })

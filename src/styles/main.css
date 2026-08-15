@@ -3503,6 +3503,17 @@ input {
   align-items: center;
   gap: 10px;
 }
+.employee-chat-header-actions,
+.assistant-chat-head-actions {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+.ai-conversation-usage {
+  color: #7d8796;
+  font-size: 9px;
+  font-weight: 600;
+  white-space: nowrap;
+}
 .employee-chat-header > div > div {
   display: grid;
   gap: 2px;
@@ -3774,6 +3785,12 @@ input {
 .employee-composer > div > span {
   color: #939caa;
   font-size: 9px;
+}
+.employee-composer-actions,
+.assistant-composer-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 .employee-evidence-head {
   display: flex;
@@ -4834,6 +4851,9 @@ input {
   border-radius: 12px;
   background: #fff;
 }
+.support-embed-context {
+  flex-wrap: wrap;
+}
 .support-embed-context > div,
 .support-embed-question {
   display: flex;
@@ -5135,6 +5155,9 @@ input {
   .support-embed-context .el-select {
     width: 100%;
   }
+  .support-embed-context .ai-model-selector {
+    width: 100%;
+  }
   .employee-app {
     grid-template-rows: auto minmax(0, 1fr);
   }
@@ -5240,6 +5263,11 @@ input {
     display: none;
   }
   .assistant-composer > div {
+    justify-content: flex-end;
+  }
+  .employee-composer-actions,
+  .assistant-composer-actions {
+    width: 100%;
     justify-content: flex-end;
   }
   .settings-hero {

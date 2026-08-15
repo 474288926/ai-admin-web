@@ -93,6 +93,18 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '质量分析', description: '跟踪点踩、未命中、高频问题和引用质量。' },
       },
       {
+        path: 'ai-usage',
+        name: 'ai-usage',
+        component: () => import('@/views/AiUsageView.vue'),
+        meta: { title: '模型用量', description: '查看我的模型调用、Token 与月度预算使用情况。' },
+      },
+      {
+        path: 'model-health',
+        name: 'model-health',
+        component: () => import('@/views/ModelHealthView.vue'),
+        meta: { title: '模型健康', description: '查看模型成功率、响应耗时和故障切换情况。' },
+      },
+      {
         path: 'evaluations',
         name: 'evaluations',
         component: () => import('@/views/EvaluationsView.vue'),

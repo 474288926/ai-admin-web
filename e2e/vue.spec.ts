@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page, type Route } from '@playwright/test'
 
 const managerEmail = process.env.E2E_MANAGER_EMAIL
 const managerPassword = process.env.E2E_MANAGER_PASSWORD
@@ -28,6 +28,34 @@ async function login(page: Page, email: string, password: string): Promise<void>
   await page.getByRole('button', { name: '进入管理端' }).click()
   await expect(page).toHaveURL(/\/dashboard$/)
   await expect(page.getByRole('heading', { name: '运营总览', level: 1 })).toBeVisible()
+}
+
+const mockSession = {
+  tokenType: 'Bearer',
+  accessToken: 'e2e-access-token',
+  accessTokenExpiresIn: 3600,
+  refreshToken: 'e2e-refresh-token',
+  refreshTokenExpiresIn: 86400,
+  user: {
+    id: '10000000-0000-4000-8000-000000000010',
+    email: 'ai-e2e@example.com',
+    name: 'AI E2E 用户',
+    createdAt: '2026-08-14T00:00:00.000Z',
+  },
+} as const
+
+async function useMockSession(page: Page): Promise<void> {
+  await page.addInitScript((session) => {
+    window.localStorage.setItem('knowledge-admin-session', JSON.stringify(session))
+  }, mockSession)
+}
+
+function fulfillJson(route: Route, body: unknown, status = 200): Promise<void> {
+  return route.fulfill({
+    status,
+    contentType: 'application/json',
+    body: JSON.stringify(body),
+  })
 }
 
 test('未登录访问业务页面时跳转登录页并保留回跳地址', async ({ page }) => {
@@ -78,6 +106,285 @@ test('办公门户入口适配移动端且没有页面级横向溢出', async ({
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
   )
   expect(overflow).toBeLessThanOrEqual(1)
+})
+
+test('模型选择器把选中的模型传给问答接口', async ({ page }) => {
+  await useMockSession(page)
+
+  const knowledgeBaseId = '10000000-0000-4000-8000-000000000020'
+  const conversationId = '10000000-0000-4000-8000-000000000021'
+  const userMessageId = '10000000-0000-4000-8000-000000000022'
+  const assistantMessageId = '10000000-0000-4000-8000-000000000023'
+  const now = '2026-08-14T08:00:00.000Z'
+  let sentMessageBody: Record<string, unknown> | null = null
+
+  await page.route('**/api/v1/**', async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+
+    if (url.pathname === '/api/v1/ai/models') {
+      return fulfillJson(route, [
+        {
+          id: 'qwen',
+          provider: 'qwen',
+          displayName: '千问（阿里云百炼）',
+          isDefault: true,
+          pricing: null,
+        },
+        {
+          id: 'deepseek',
+          provider: 'deepseek',
+          displayName: 'DeepSeek',
+          isDefault: false,
+          pricing: null,
+        },
+      ])
+    }
+
+    if (url.pathname === '/api/v1/knowledge-bases') {
+      return fulfillJson(route, {
+        items: [
+          {
+            id: knowledgeBaseId,
+            organizationId: null,
+            visibility: 'PRIVATE',
+            name: '客服知识库',
+            description: null,
+            createdAt: now,
+            updatedAt: now,
+          },
+        ],
+        meta: { page: 1, pageSize: 100, total: 1, totalPages: 1, hasNextPage: false },
+      })
+    }
+
+    if (url.pathname === '/api/v1/conversations' && request.method() === 'GET') {
+      return fulfillJson(route, {
+        items: [],
+        meta: { page: 1, pageSize: 100, total: 0, totalPages: 0, hasNextPage: false },
+      })
+    }
+
+    if (url.pathname === '/api/v1/conversations' && request.method() === 'POST') {
+      return fulfillJson(
+        route,
+        {
+          id: conversationId,
+          title: '设备无法联网怎么办？',
+          knowledgeBaseId,
+          createdAt: now,
+          updatedAt: now,
+        },
+        201,
+      )
+    }
+
+    if (
+      url.pathname === `/api/v1/conversations/${conversationId}/messages` &&
+      request.method() === 'POST'
+    ) {
+      sentMessageBody = request.postDataJSON() as Record<string, unknown>
+      const clientRequestId = String(sentMessageBody.clientRequestId)
+      const baseMessage = {
+        status: 'COMPLETED',
+        providerResponseId: null,
+        finishReason: null,
+        usage: null,
+        citations: null,
+        structuredResponse: null,
+        errorCode: null,
+        createdAt: now,
+        updatedAt: now,
+      }
+      return fulfillJson(route, {
+        userMessage: {
+          ...baseMessage,
+          id: userMessageId,
+          position: 1,
+          role: 'USER',
+          content: '设备无法联网怎么办？',
+          clientRequestId,
+          parentMessageId: null,
+          provider: null,
+          model: null,
+        },
+        assistantMessage: {
+          ...baseMessage,
+          id: assistantMessageId,
+          position: 2,
+          role: 'ASSISTANT',
+          content: '请先检查设备电源和网络指示灯。',
+          clientRequestId: null,
+          parentMessageId: userMessageId,
+          provider: 'deepseek',
+          model: 'deepseek-e2e-model',
+        },
+        replayed: false,
+        modelSelection: {
+          requestedModelId: 'deepseek',
+          effectiveModelId: 'deepseek',
+          status: 'normal',
+          currency: 'CNY',
+          spent: 1,
+          budget: 10,
+          usageRatio: 0.1,
+        },
+      })
+    }
+
+    if (
+      url.pathname === `/api/v1/conversations/${conversationId}/messages` &&
+      request.method() === 'GET'
+    ) {
+      return fulfillJson(route, {
+        items: [],
+        meta: { page: 1, pageSize: 100, total: 0, totalPages: 0, hasNextPage: false },
+      })
+    }
+
+    return fulfillJson(route, { code: 'E2E_ROUTE_NOT_MOCKED' }, 404)
+  })
+
+  await page.goto('/assistant')
+  await expect(page.getByRole('heading', { name: '客服知识辅助', level: 2 })).toBeVisible()
+  await page.locator('.ai-model-selector .el-select__wrapper').click()
+  await page.getByText('DeepSeek', { exact: true }).last().click()
+
+  await expect
+    .poll(() => page.evaluate(() => window.localStorage.getItem('ai-admin-web:selected-model-id')))
+    .toBe('deepseek')
+
+  await page
+    .getByPlaceholder('输入客户问题或需要查询的业务事项，Enter 发送，Shift + Enter 换行')
+    .fill('设备无法联网怎么办？')
+  await page.getByRole('button', { name: '发送问题' }).click()
+
+  await expect
+    .poll(() => sentMessageBody)
+    .toMatchObject({
+      content: '设备无法联网怎么办？',
+      mode: 'standard',
+      modelId: 'deepseek',
+    })
+})
+
+test('模型用量页展示 Token、费用和预算进度', async ({ page }) => {
+  await useMockSession(page)
+
+  await page.route('**/api/v1/ai/usage/summary*', (route) =>
+    fulfillJson(route, {
+      month: '2026-08',
+      timeZone: 'Asia/Shanghai',
+      budgetPolicy: { warningRatio: 0.8, fallbackRatio: 1, autoFallbackEnabled: true },
+      totals: {
+        callCount: 12,
+        inputTokens: 24000,
+        outputTokens: 6000,
+        totalTokens: 30000,
+        cachedInputTokens: 4000,
+        reasoningOutputTokens: 1000,
+      },
+      costs: [{ currency: 'CNY', amount: 8.2, budget: 10, usageRatio: 0.82 }],
+      byModel: [
+        {
+          provider: 'qwen',
+          model: 'qwen-e2e-model',
+          callCount: 12,
+          inputTokens: 24000,
+          outputTokens: 6000,
+          totalTokens: 30000,
+          cachedInputTokens: 4000,
+          reasoningOutputTokens: 1000,
+          cost: { currency: 'CNY', amount: 8.2 },
+        },
+      ],
+      daily: [],
+    }),
+  )
+
+  await page.goto('/ai-usage')
+
+  await expect(page.getByRole('heading', { name: '我的模型用量', level: 2 })).toBeVisible()
+  await expect(page.getByLabel('用量概览').getByText('30,000')).toBeVisible()
+  await expect(page.getByText('人民币费用')).toBeVisible()
+  await expect(page.getByText('月度预算即将达到预警线')).toBeVisible()
+  await expect(page.getByText('qwen-e2e-model')).toBeVisible()
+})
+
+test('模型健康页展示熔断状态并发送测试告警', async ({ page }) => {
+  await useMockSession(page)
+
+  let alertBody: Record<string, unknown> | null = null
+  const report = {
+    period: { days: 7, from: '2026-08-08', to: '2026-08-14', timeZone: 'Asia/Shanghai' },
+    totals: {
+      requests: 20,
+      successes: 18,
+      failures: 2,
+      successRate: 0.9,
+      averageDurationMs: 1200,
+      failovers: 2,
+    },
+    models: [
+      {
+        modelId: 'qwen',
+        provider: 'qwen',
+        displayName: '千问（阿里云百炼）',
+        status: 'degraded',
+        circuitOpen: true,
+        circuitRetryAfterSeconds: 42,
+        requests: 20,
+        successes: 18,
+        failures: 2,
+        successRate: 0.9,
+        averageDurationMs: 1200,
+        failovers: 2,
+        timeoutCount: 2,
+        rateLimitCount: 0,
+        unavailableCount: 0,
+        providerErrorCount: 0,
+        failoverOutCount: 2,
+        failoverInCount: 0,
+        lastActivityDate: '2026-08-14',
+      },
+    ],
+    daily: [],
+    incidents: [],
+    alertDeliveries: [],
+  }
+
+  await page.route('**/api/v1/ai/health/**', async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (url.pathname === '/api/v1/ai/health/summary') return fulfillJson(route, report)
+    if (url.pathname === '/api/v1/ai/health/alerts/test') {
+      alertBody = request.postDataJSON() as Record<string, unknown>
+      return fulfillJson(route, {
+        status: 'delivered',
+        channel: 'generic',
+        statusCode: 204,
+        failureReason: null,
+        incidentType: 'circuit_opened',
+        modelId: 'qwen',
+      })
+    }
+    return fulfillJson(route, { code: 'E2E_ROUTE_NOT_MOCKED' }, 404)
+  })
+
+  await page.goto('/model-health')
+
+  await expect(page.getByRole('heading', { name: '模型健康与故障切换', level: 2 })).toBeVisible()
+  await expect(page.getByText('熔断中')).toBeVisible()
+  await expect(page.getByText(/约 42 秒后自动试探恢复/)).toBeVisible()
+  await page.getByRole('button', { name: '发送测试告警' }).click()
+
+  await expect
+    .poll(() => alertBody)
+    .toEqual({
+      modelId: 'qwen',
+      type: 'circuit_opened',
+    })
+  await expect(page.getByText('测试告警已成功投递')).toBeVisible()
 })
 
 if (managerCredentialsConfigured)

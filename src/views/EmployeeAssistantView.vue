@@ -18,8 +18,12 @@ import {
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRouter } from 'vue-router'
 
+import AiModelSelector from '@/components/AiModelSelector.vue'
+import AiConversationUsage from '@/components/AiConversationUsage.vue'
+import AiUsageBadge from '@/components/AiUsageBadge.vue'
 import { ApiError } from '@/services/api/client'
 import * as assistantApi from '@/services/api/assistant'
+import { budgetDecisionMessage, providerFailoverMessage } from '@/services/ai-usage'
 import * as knowledgeBaseApi from '@/services/api/knowledge-bases'
 import { useAuthStore } from '@/stores/auth'
 import type { Citation, Conversation, ConversationMessage, FeedbackRating } from '@/types/assistant'
@@ -29,6 +33,7 @@ const authStore = useAuthStore()
 const queryClient = useQueryClient()
 const selectedKnowledgeBaseId = ref('')
 const selectedConversationId = ref('')
+const selectedModelId = ref('')
 const conversationSearch = ref('')
 const draft = ref('')
 const evidenceDrawerVisible = ref(false)
@@ -79,7 +84,11 @@ const sendMutation = useMutation({
         title: content.slice(0, 42),
       })
     }
-    const result = await assistantApi.sendMessage(conversation.id, content)
+    const result = await assistantApi.sendMessage(
+      conversation.id,
+      content,
+      selectedModelId.value || undefined,
+    )
     return { conversation, result }
   },
 })
@@ -136,8 +145,12 @@ async function send(): Promise<void> {
   if (!content || !selectedKnowledgeBaseId.value || sendMutation.isPending.value) return
   draft.value = ''
   try {
-    const { conversation } = await sendMutation.mutateAsync(content)
+    const { conversation, result } = await sendMutation.mutateAsync(content)
     selectedConversationId.value = conversation.id
+    const budgetNotice = budgetDecisionMessage(result.modelSelection)
+    if (budgetNotice) ElMessage.warning(budgetNotice)
+    const failoverNotice = providerFailoverMessage(result.providerFailover)
+    if (failoverNotice) ElMessage.warning(failoverNotice)
     await nextTick()
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['employee-conversations'] }),
@@ -338,9 +351,12 @@ function formatTime(value: string): string {
               ><small>{{ selectedKnowledgeBase?.name || '请先选择知识库' }}</small>
             </div>
           </div>
-          <el-tag type="success" effect="plain"
-            ><el-icon><CircleCheck /></el-icon> 仅检索有权限资料</el-tag
-          >
+          <div class="employee-chat-header-actions">
+            <AiConversationUsage :messages="messages" />
+            <el-tag type="success" effect="plain"
+              ><el-icon><CircleCheck /></el-icon> 仅检索有权限资料</el-tag
+            >
+          </div>
         </header>
 
         <div class="employee-messages">
@@ -376,6 +392,12 @@ function formatTime(value: string): string {
               <div class="employee-message-meta">
                 <strong>{{ message.role === 'USER' ? '我的问题' : '知识助手' }}</strong
                 ><span>{{ formatTime(message.createdAt) }}</span
+                ><AiUsageBadge
+                  v-if="message.role === 'ASSISTANT' && (message.provider || message.usage)"
+                  :provider="message.provider"
+                  :model="message.model"
+                  :usage="message.usage"
+                />
                 ><el-tag v-if="message.structuredResponse" size="small" effect="plain">{{
                   scenarioLabel(message.structuredResponse.scenario)
                 }}</el-tag>
@@ -486,15 +508,18 @@ function formatTime(value: string): string {
             @keydown="handleKeydown"
           />
           <div>
-            <span>回答由 AI 基于内部知识生成，请以引用原文为准</span
-            ><el-button
-              type="primary"
-              :icon="Promotion"
-              :loading="sendMutation.isPending.value"
-              :disabled="!draft.trim() || !selectedKnowledgeBaseId"
-              @click="send"
-              >发送</el-button
-            >
+            <span>回答由 AI 基于内部知识生成，请以引用原文为准</span>
+            <div class="employee-composer-actions">
+              <AiModelSelector v-model="selectedModelId" />
+              <el-button
+                type="primary"
+                :icon="Promotion"
+                :loading="sendMutation.isPending.value"
+                :disabled="!draft.trim() || !selectedKnowledgeBaseId"
+                @click="send"
+                >发送</el-button
+              >
+            </div>
           </div>
         </footer>
       </section>
