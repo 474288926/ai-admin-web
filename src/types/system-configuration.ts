@@ -104,3 +104,25 @@ export interface UpdateSystemConfigurationInput {
   aiDefaultModelId?: string
   ragPromptVersion?: string
 }
+
+export interface SystemConfigurationHistoryValueChange {
+  before: string
+  after: string
+}
+
+export interface SystemConfigurationHistory {
+  items: {
+    id: string
+    revision: number
+    createdAt: string
+    actor: {
+      id: string
+      name: string | null
+      email: string
+    } | null
+    changes: {
+      aiDefaultModelId?: SystemConfigurationHistoryValueChange
+      ragPromptVersion?: SystemConfigurationHistoryValueChange
+    }
+  }[]
+}
