@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { useQuery } from '@tanstack/vue-query'
+import { computed, reactive, ref } from 'vue'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
+import { ElMessage } from 'element-plus'
 import {
   CircleCheck,
   Cpu,
   DataAnalysis,
+  Edit,
   Files,
   Lock,
   Refresh,
@@ -13,7 +15,18 @@ import {
 } from '@element-plus/icons-vue'
 
 import { ApiError } from '@/services/api/client'
-import { getSystemConfiguration } from '@/services/api/system-configuration'
+import { providerLabel } from '@/services/ai-usage'
+import {
+  getSystemConfiguration,
+  updateSystemConfiguration,
+} from '@/services/api/system-configuration'
+
+const queryClient = useQueryClient()
+const editVisible = ref(false)
+const editForm = reactive({
+  aiDefaultModelId: '',
+  ragPromptVersion: '',
+})
 
 const configurationQuery = useQuery({
   queryKey: ['system-configuration'],
@@ -22,15 +35,26 @@ const configurationQuery = useQuery({
 })
 
 const configuration = computed(() => configurationQuery.data.value)
+const enabledModels = computed(
+  () => configuration.value?.ai.models.filter((model) => model.enabled) ?? [],
+)
+const configurableModels = computed(() =>
+  enabledModels.value.filter((model) => model.credentialConfigured && model.model !== null),
+)
+
+const updateMutation = useMutation({
+  mutationFn: updateSystemConfiguration,
+})
 
 const summaryCards = computed(() => {
   const value = configuration.value
   if (!value) return []
+  const defaultModel = value.ai.models.find((model) => model.isDefault)
   return [
     {
       label: '生成模型',
-      value: value.ai.defaultModel ?? '未配置',
-      detail: `${value.ai.provider} · ${value.ai.enabled ? '服务已启用' : '服务未启用'}`,
+      value: value.ai.defaultModelId,
+      detail: `${providerLabel(defaultModel?.provider ?? value.ai.provider)} · ${value.ai.enabled ? '服务已启用' : '服务未启用'}`,
       icon: Cpu,
       ready: value.ai.enabled && value.ai.credentialConfigured,
     },
@@ -63,6 +87,41 @@ const summaryCards = computed(() => {
 
 function getErrorMessage(error: unknown): string {
   return error instanceof ApiError ? error.message : '系统配置加载失败，请稍后重试'
+}
+
+function openEditor(): void {
+  const value = configuration.value
+  if (!value) return
+  editForm.aiDefaultModelId = value.pending?.aiDefaultModelId ?? value.ai.defaultModelId
+  editForm.ragPromptVersion = value.pending?.ragPromptVersion ?? value.rag.promptVersion
+  editVisible.value = true
+}
+
+async function saveConfiguration(): Promise<void> {
+  const value = configuration.value
+  if (!value) return
+
+  const promptVersion = editForm.ragPromptVersion.trim()
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,99}$/.test(promptVersion)) {
+    ElMessage.warning('Prompt 版本格式无效')
+    return
+  }
+
+  try {
+    const updated = await updateMutation.mutateAsync({
+      revision: value.policy.currentRevision,
+      aiDefaultModelId: editForm.aiDefaultModelId,
+      ragPromptVersion: promptVersion,
+    })
+    queryClient.setQueryData(['system-configuration'], updated)
+    editVisible.value = false
+    ElMessage.success('配置已保存，将在后端重启后生效')
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 409) {
+      await configurationQuery.refetch()
+    }
+    ElMessage.error(error instanceof ApiError ? error.message : '系统配置保存失败，请稍后重试')
+  }
 }
 
 function booleanText(value: boolean): string {
@@ -110,6 +169,13 @@ function formatCapturedAt(value: string): string {
         <strong v-if="configuration">{{ formatCapturedAt(configuration.capturedAt) }}</strong>
         <strong v-else>正在读取</strong>
         <el-button
+          :icon="Edit"
+          :disabled="!configuration?.policy.mutationAllowed"
+          :title="configuration?.policy.mutationAllowed ? '编辑配置' : '仅组织所有者或管理员可修改'"
+          @click="openEditor"
+          >编辑配置</el-button
+        >
+        <el-button
           :icon="Refresh"
           :loading="configurationQuery.isFetching.value"
           @click="configurationQuery.refetch()"
@@ -119,9 +185,18 @@ function formatCapturedAt(value: string): string {
     </section>
 
     <el-alert
-      title="配置由本地环境统一管理"
-      description="本页只展示后端已生效的安全快照。修改环境配置后需要重启后端；密码、令牌、数据库地址和服务端点不会通过接口返回。"
+      title="配置由环境基线与数据库覆盖共同管理"
+      description="默认模型和 Prompt 版本可在本页修改，并在后端重启后统一生效。密码、令牌、数据库地址和服务端点仍由部署环境管理，且不会通过接口返回。"
       type="info"
+      show-icon
+      :closable="false"
+    />
+
+    <el-alert
+      v-if="configuration?.pending"
+      :title="`配置 revision ${configuration.pending.revision} 等待生效`"
+      :description="`默认模型将切换为 ${configuration.pending.aiDefaultModelId}，Prompt 版本将切换为 ${configuration.pending.ragPromptVersion}。保存时间：${formatCapturedAt(configuration.pending.updatedAt)}`"
+      type="warning"
       show-icon
       :closable="false"
     />
@@ -172,6 +247,22 @@ function formatCapturedAt(value: string): string {
           <div class="settings-row">
             <span>默认生成模型</span
             ><strong>{{ configuration.ai.defaultModel ?? '未配置' }}</strong>
+          </div>
+          <div class="settings-row settings-models-row">
+            <span>启用模型</span>
+            <div class="settings-models">
+              <el-tag
+                v-for="model in enabledModels"
+                :key="model.id"
+                :type="model.isDefault ? 'success' : 'info'"
+                effect="plain"
+              >
+                {{ providerLabel(model.provider) }} · {{ model.model ?? '模型名未配置' }}
+                {{ model.isDefault ? '（默认）' : '' }} ·
+                {{ model.credentialConfigured ? '凭据已配置' : '凭据未配置' }}
+              </el-tag>
+              <span v-if="enabledModels.length === 0">暂无启用模型</span>
+            </div>
           </div>
           <div class="settings-row">
             <span>访问凭据</span
@@ -414,5 +505,44 @@ function formatCapturedAt(value: string): string {
         <el-tag type="success" effect="dark">零密钥回显</el-tag>
       </section>
     </template>
+
+    <el-dialog v-model="editVisible" title="编辑系统配置" width="min(520px, calc(100vw - 32px))">
+      <el-form label-position="top">
+        <el-form-item label="默认生成模型" required>
+          <el-select v-model="editForm.aiDefaultModelId" style="width: 100%">
+            <el-option
+              v-for="model in configurableModels"
+              :key="model.id"
+              :label="`${providerLabel(model.provider)} · ${model.model}`"
+              :value="model.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="Prompt 版本" required>
+          <el-input
+            v-model="editForm.ragPromptVersion"
+            maxlength="100"
+            placeholder="rag-structured-response-2.0"
+          />
+        </el-form-item>
+        <el-alert
+          title="保存后不会立即切换运行配置"
+          description="请在维护窗口重启全部后端实例，使同一 revision 在所有实例统一生效。"
+          type="warning"
+          show-icon
+          :closable="false"
+        />
+      </el-form>
+      <template #footer>
+        <el-button @click="editVisible = false">取消</el-button>
+        <el-button
+          type="primary"
+          :loading="updateMutation.isPending.value"
+          :disabled="configurableModels.length === 0"
+          @click="saveConfiguration"
+          >保存配置</el-button
+        >
+      </template>
+    </el-dialog>
   </div>
 </template>
