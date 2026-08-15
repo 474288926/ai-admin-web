@@ -4546,6 +4546,23 @@ input {
   font-weight: 600;
   text-align: right;
 }
+.settings-models-row {
+  align-items: flex-start;
+  padding: 12px 0;
+}
+.settings-models {
+  display: flex;
+  max-width: 72%;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.settings-models .el-tag {
+  height: auto;
+  min-height: 24px;
+  white-space: normal;
+  text-align: right;
+}
 .extensions-row > div {
   display: flex;
   flex-wrap: wrap;

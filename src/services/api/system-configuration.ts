@@ -23,8 +23,19 @@ export const systemConfigurationSchema = z.object({
   ai: z.object({
     enabled: z.boolean(),
     provider: z.string().min(1),
+    defaultModelId: z.string().min(1),
     defaultModel: z.string().min(1).nullable(),
     credentialConfigured: z.boolean(),
+    models: z.array(
+      z.object({
+        id: z.string().min(1),
+        provider: z.string().min(1),
+        model: z.string().min(1).nullable(),
+        enabled: z.boolean(),
+        isDefault: z.boolean(),
+        credentialConfigured: z.boolean(),
+      }),
+    ),
     requestTimeoutMs: nonnegativeInteger,
     maxOutputTokens: nonnegativeInteger,
     maxRetries: nonnegativeInteger,

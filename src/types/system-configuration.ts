@@ -16,8 +16,17 @@ export interface SystemConfigurationSnapshot {
   ai: {
     enabled: boolean
     provider: string
+    defaultModelId: string
     defaultModel: string | null
     credentialConfigured: boolean
+    models: {
+      id: string
+      provider: string
+      model: string | null
+      enabled: boolean
+      isDefault: boolean
+      credentialConfigured: boolean
+    }[]
     requestTimeoutMs: number
     maxOutputTokens: number
     maxRetries: number

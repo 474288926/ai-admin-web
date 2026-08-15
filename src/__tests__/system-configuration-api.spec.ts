@@ -20,8 +20,27 @@ const snapshot = {
   ai: {
     enabled: true,
     provider: 'openai',
+    defaultModelId: 'openai',
     defaultModel: 'gpt-test',
     credentialConfigured: true,
+    models: [
+      {
+        id: 'openai',
+        provider: 'openai',
+        model: 'gpt-test',
+        enabled: true,
+        isDefault: true,
+        credentialConfigured: true,
+      },
+      {
+        id: 'qwen',
+        provider: 'qwen',
+        model: 'qwen-test',
+        enabled: false,
+        isDefault: false,
+        credentialConfigured: false,
+      },
+    ],
     requestTimeoutMs: 30000,
     maxOutputTokens: 2048,
     maxRetries: 2,
@@ -101,6 +120,10 @@ describe('system configuration api', () => {
 
     expect(result.retrieval.mode).toBe('hybrid')
     expect(result.ai.credentialConfigured).toBe(true)
+    expect(result.ai.models).toEqual([
+      expect.objectContaining({ id: 'openai', isDefault: true, credentialConfigured: true }),
+      expect.objectContaining({ id: 'qwen', enabled: false, credentialConfigured: false }),
+    ])
     expect(result.policy.secretsExposed).toBe(false)
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain('/system/configuration')
     expect(JSON.stringify(result)).not.toContain('apiKey')

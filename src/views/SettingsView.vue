@@ -13,6 +13,7 @@ import {
 } from '@element-plus/icons-vue'
 
 import { ApiError } from '@/services/api/client'
+import { providerLabel } from '@/services/ai-usage'
 import { getSystemConfiguration } from '@/services/api/system-configuration'
 
 const configurationQuery = useQuery({
@@ -22,15 +23,19 @@ const configurationQuery = useQuery({
 })
 
 const configuration = computed(() => configurationQuery.data.value)
+const enabledModels = computed(
+  () => configuration.value?.ai.models.filter((model) => model.enabled) ?? [],
+)
 
 const summaryCards = computed(() => {
   const value = configuration.value
   if (!value) return []
+  const defaultModel = value.ai.models.find((model) => model.isDefault)
   return [
     {
       label: '生成模型',
-      value: value.ai.defaultModel ?? '未配置',
-      detail: `${value.ai.provider} · ${value.ai.enabled ? '服务已启用' : '服务未启用'}`,
+      value: value.ai.defaultModelId,
+      detail: `${providerLabel(defaultModel?.provider ?? value.ai.provider)} · ${value.ai.enabled ? '服务已启用' : '服务未启用'}`,
       icon: Cpu,
       ready: value.ai.enabled && value.ai.credentialConfigured,
     },
@@ -172,6 +177,22 @@ function formatCapturedAt(value: string): string {
           <div class="settings-row">
             <span>默认生成模型</span
             ><strong>{{ configuration.ai.defaultModel ?? '未配置' }}</strong>
+          </div>
+          <div class="settings-row settings-models-row">
+            <span>启用模型</span>
+            <div class="settings-models">
+              <el-tag
+                v-for="model in enabledModels"
+                :key="model.id"
+                :type="model.isDefault ? 'success' : 'info'"
+                effect="plain"
+              >
+                {{ providerLabel(model.provider) }} · {{ model.model ?? '模型名未配置' }}
+                {{ model.isDefault ? '（默认）' : '' }} ·
+                {{ model.credentialConfigured ? '凭据已配置' : '凭据未配置' }}
+              </el-tag>
+              <span v-if="enabledModels.length === 0">暂无启用模型</span>
+            </div>
           </div>
           <div class="settings-row">
             <span>访问凭据</span
