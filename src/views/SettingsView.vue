@@ -4,12 +4,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { ElMessage } from 'element-plus'
 import {
   CircleCheck,
+  Clock,
   Cpu,
   DataAnalysis,
   Edit,
   Files,
   Lock,
   Refresh,
+  Right,
   Search,
   Setting,
 } from '@element-plus/icons-vue'
@@ -18,6 +20,7 @@ import { ApiError } from '@/services/api/client'
 import { providerLabel } from '@/services/ai-usage'
 import {
   getSystemConfiguration,
+  getSystemConfigurationHistory,
   updateSystemConfiguration,
 } from '@/services/api/system-configuration'
 
@@ -34,7 +37,14 @@ const configurationQuery = useQuery({
   staleTime: 30_000,
 })
 
+const historyQuery = useQuery({
+  queryKey: ['system-configuration-history'],
+  queryFn: () => getSystemConfigurationHistory(20),
+  staleTime: 30_000,
+})
+
 const configuration = computed(() => configurationQuery.data.value)
+const configurationHistory = computed(() => historyQuery.data.value?.items ?? [])
 const enabledModels = computed(
   () => configuration.value?.ai.models.filter((model) => model.enabled) ?? [],
 )
@@ -114,6 +124,7 @@ async function saveConfiguration(): Promise<void> {
       ragPromptVersion: promptVersion,
     })
     queryClient.setQueryData(['system-configuration'], updated)
+    await queryClient.invalidateQueries({ queryKey: ['system-configuration-history'] })
     editVisible.value = false
     ElMessage.success('配置已保存，将在后端重启后生效')
   } catch (error) {
@@ -154,6 +165,18 @@ function formatCapturedAt(value: string): string {
     second: '2-digit',
   }).format(new Date(value))
 }
+
+function historyActorName(actor: { name: string | null; email: string } | null): string {
+  return actor?.name ?? actor?.email ?? '已删除用户'
+}
+
+function historyActorDetail(actor: { name: string | null; email: string } | null): string | null {
+  return actor?.name ? actor.email : null
+}
+
+async function refreshConfiguration(): Promise<void> {
+  await Promise.all([configurationQuery.refetch(), historyQuery.refetch()])
+}
 </script>
 
 <template>
@@ -177,8 +200,8 @@ function formatCapturedAt(value: string): string {
         >
         <el-button
           :icon="Refresh"
-          :loading="configurationQuery.isFetching.value"
-          @click="configurationQuery.refetch()"
+          :loading="configurationQuery.isFetching.value || historyQuery.isFetching.value"
+          @click="refreshConfiguration"
           >刷新快照</el-button
         >
       </div>
@@ -492,6 +515,71 @@ function formatCapturedAt(value: string): string {
             >
           </div>
         </div>
+      </section>
+
+      <section class="settings-history" aria-labelledby="settings-history-title">
+        <header class="settings-history-head">
+          <div class="settings-history-title">
+            <div>
+              <el-icon><Clock /></el-icon>
+            </div>
+            <div>
+              <h3 id="settings-history-title">配置变更历史</h3>
+              <p>最近 20 次受管配置修改，按 revision 从新到旧排列</p>
+            </div>
+          </div>
+          <el-button
+            :icon="Refresh"
+            :loading="historyQuery.isFetching.value"
+            @click="historyQuery.refetch()"
+            >刷新记录</el-button
+          >
+        </header>
+
+        <el-alert
+          v-if="historyQuery.isError.value"
+          title="无法读取配置变更历史"
+          :description="getErrorMessage(historyQuery.error.value)"
+          type="error"
+          show-icon
+          :closable="false"
+        />
+        <div
+          v-else-if="historyQuery.isLoading.value"
+          v-loading="true"
+          class="settings-history-loading"
+        />
+        <el-empty
+          v-else-if="configurationHistory.length === 0"
+          description="暂无配置变更记录"
+          :image-size="72"
+        />
+        <ol v-else class="settings-history-list">
+          <li v-for="item in configurationHistory" :key="item.id">
+            <div class="settings-history-meta">
+              <el-tag size="small" effect="plain">revision {{ item.revision }}</el-tag>
+              <strong>{{ historyActorName(item.actor) }}</strong>
+              <span v-if="historyActorDetail(item.actor)">{{
+                historyActorDetail(item.actor)
+              }}</span>
+              <time :datetime="item.createdAt">{{ formatCapturedAt(item.createdAt) }}</time>
+            </div>
+            <div class="settings-history-changes">
+              <div v-if="item.changes.aiDefaultModelId">
+                <span>默认模型</span>
+                <code>{{ item.changes.aiDefaultModelId.before }}</code>
+                <el-icon><Right /></el-icon>
+                <code>{{ item.changes.aiDefaultModelId.after }}</code>
+              </div>
+              <div v-if="item.changes.ragPromptVersion">
+                <span>Prompt 版本</span>
+                <code>{{ item.changes.ragPromptVersion.before }}</code>
+                <el-icon><Right /></el-icon>
+                <code>{{ item.changes.ragPromptVersion.after }}</code>
+              </div>
+            </div>
+          </li>
+        </ol>
       </section>
 
       <section class="settings-security-note">

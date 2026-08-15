@@ -224,6 +224,41 @@ test('系统配置页展示实际启用的多模型与 Prompt 版本', async ({ 
     },
   }
   let updateBody: Record<string, unknown> | null = null
+  await page.route('**/api/v1/system/configuration/history?limit=20', (route) =>
+    fulfillJson(route, {
+      items: [
+        {
+          id: 'change-e2e-2',
+          revision: 2,
+          createdAt: '2026-08-15T05:00:00.000Z',
+          actor: {
+            id: 'admin-e2e',
+            name: '配置管理员',
+            email: 'admin@example.com',
+          },
+          changes: {
+            aiDefaultModelId: { before: 'openai', after: 'qwen' },
+            ragPromptVersion: {
+              before: 'rag-structured-response-1.0',
+              after: 'rag-structured-response-e2e',
+            },
+          },
+        },
+        {
+          id: 'change-e2e-1',
+          revision: 1,
+          createdAt: '2026-08-14T05:00:00.000Z',
+          actor: null,
+          changes: {
+            ragPromptVersion: {
+              before: 'rag-structured-response-0.9',
+              after: 'rag-structured-response-1.0',
+            },
+          },
+        },
+      ],
+    }),
+  )
   await page.route('**/api/v1/system/configuration', (route) => {
     if (route.request().method() === 'PATCH') {
       updateBody = route.request().postDataJSON() as Record<string, unknown>
@@ -249,6 +284,12 @@ test('系统配置页展示实际启用的多模型与 Prompt 版本', async ({ 
   await expect(page.getByText(/千问 · qwen-e2e-model .*默认.*凭据已配置/)).toBeVisible()
   await expect(page.getByText('rag-structured-response-e2e', { exact: true }).first()).toBeVisible()
   await expect(page.getByText(/deepseek-e2e-model/)).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: '配置变更历史', level: 3 })).toBeVisible()
+  await expect(page.getByText('revision 2')).toBeVisible()
+  await expect(page.getByText('配置管理员', { exact: true })).toBeVisible()
+  await expect(page.getByText('admin@example.com', { exact: true })).toBeVisible()
+  await expect(page.getByText('rag-structured-response-1.0', { exact: true })).toHaveCount(2)
+  await expect(page.getByText('rag-structured-response-e2e', { exact: true }).last()).toBeVisible()
 
   await page.getByRole('button', { name: '编辑配置' }).click()
   const dialog = page.getByRole('dialog', { name: '编辑系统配置' })
@@ -264,11 +305,20 @@ test('系统配置页展示实际启用的多模型与 Prompt 版本', async ({ 
   await dialog.getByRole('button', { name: '保存配置' }).click()
 
   await expect(page.getByText('配置 revision 1 等待生效')).toBeVisible()
+  await expect(dialog).toBeHidden()
   expect(updateBody).toEqual({
     revision: 0,
     aiDefaultModelId: 'openai',
     ragPromptVersion: 'rag-structured-response-2.0',
   })
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/settings')
+  await expect(page.getByRole('heading', { name: '配置变更历史', level: 3 })).toBeVisible()
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  )
+  expect(overflow).toBeLessThanOrEqual(1)
 })
 
 test('模型选择器把选中的模型传给问答接口', async ({ page }) => {

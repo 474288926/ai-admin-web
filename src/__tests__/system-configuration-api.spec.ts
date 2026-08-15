@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
   getSystemConfiguration,
+  getSystemConfigurationHistory,
   updateSystemConfiguration,
 } from '@/services/api/system-configuration'
 
@@ -169,5 +170,58 @@ describe('system configuration api', () => {
         body: expect.stringContaining('rag-structured-response-2.0'),
       }),
     )
+  })
+
+  it('loads and sanitizes configuration change history', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          items: [
+            {
+              id: 'change-id',
+              revision: 2,
+              createdAt: '2026-08-15T06:00:00.000Z',
+              actor: {
+                id: 'admin-id',
+                name: '配置管理员',
+                email: 'admin@example.com',
+                accessToken: 'must-never-be-returned',
+              },
+              changes: {
+                aiDefaultModelId: { before: 'qwen', after: 'openai' },
+                apiKey: 'must-never-be-returned',
+              },
+              endpoint: 'https://private.example.com',
+            },
+          ],
+        }),
+        {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        },
+      ),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await getSystemConfigurationHistory(10)
+    const serialized = JSON.stringify(result)
+
+    expect(result.items[0]).toEqual({
+      id: 'change-id',
+      revision: 2,
+      createdAt: '2026-08-15T06:00:00.000Z',
+      actor: {
+        id: 'admin-id',
+        name: '配置管理员',
+        email: 'admin@example.com',
+      },
+      changes: {
+        aiDefaultModelId: { before: 'qwen', after: 'openai' },
+      },
+    })
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain('/system/configuration/history?limit=10')
+    expect(serialized).not.toContain('must-never-be-returned')
+    expect(serialized).not.toContain('private.example.com')
+    expect(serialized).not.toContain('apiKey')
   })
 })

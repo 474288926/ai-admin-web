@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import type {
+  SystemConfigurationHistory,
   SystemConfigurationSnapshot,
   UpdateSystemConfigurationInput,
 } from '@/types/system-configuration'
@@ -113,9 +114,42 @@ export const systemConfigurationSchema = z.object({
   }),
 })
 
+const configurationValueChangeSchema = z.object({
+  before: z.string(),
+  after: z.string(),
+})
+
+export const systemConfigurationHistorySchema = z.object({
+  items: z.array(
+    z.object({
+      id: z.string().min(1),
+      revision: nonnegativeInteger,
+      createdAt: z.iso.datetime(),
+      actor: z
+        .object({
+          id: z.string().min(1),
+          name: z.string().min(1).nullable(),
+          email: z.email(),
+        })
+        .nullable(),
+      changes: z.object({
+        aiDefaultModelId: configurationValueChangeSchema.optional(),
+        ragPromptVersion: configurationValueChangeSchema.optional(),
+      }),
+    }),
+  ),
+})
+
 export async function getSystemConfiguration(): Promise<SystemConfigurationSnapshot> {
   const result = await apiRequest<unknown>('/system/configuration')
   return systemConfigurationSchema.parse(result)
+}
+
+export async function getSystemConfigurationHistory(
+  limit = 20,
+): Promise<SystemConfigurationHistory> {
+  const result = await apiRequest<unknown>(`/system/configuration/history?limit=${limit}`)
+  return systemConfigurationHistorySchema.parse(result)
 }
 
 export async function updateSystemConfiguration(
