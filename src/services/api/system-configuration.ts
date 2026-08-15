@@ -1,6 +1,9 @@
 import { z } from 'zod'
 
-import type { SystemConfigurationSnapshot } from '@/types/system-configuration'
+import type {
+  SystemConfigurationSnapshot,
+  UpdateSystemConfigurationInput,
+} from '@/types/system-configuration'
 import { apiRequest } from './client'
 
 const nonnegativeInteger = z.number().int().nonnegative()
@@ -8,11 +11,22 @@ const nonnegativeInteger = z.number().int().nonnegative()
 export const systemConfigurationSchema = z.object({
   capturedAt: z.iso.datetime(),
   policy: z.object({
-    source: z.literal('environment'),
-    mutationSupported: z.literal(false),
+    source: z.enum(['environment', 'environment+database']),
+    mutationSupported: z.literal(true),
+    mutationAllowed: z.boolean(),
     restartRequired: z.literal(true),
     secretsExposed: z.literal(false),
+    activeRevision: nonnegativeInteger,
+    currentRevision: nonnegativeInteger,
   }),
+  pending: z
+    .object({
+      revision: nonnegativeInteger,
+      aiDefaultModelId: z.string().min(1),
+      ragPromptVersion: z.string().min(1),
+      updatedAt: z.iso.datetime(),
+    })
+    .nullable(),
   runtime: z.object({
     applicationName: z.string().min(1),
     environment: z.string().min(1),
@@ -101,5 +115,15 @@ export const systemConfigurationSchema = z.object({
 
 export async function getSystemConfiguration(): Promise<SystemConfigurationSnapshot> {
   const result = await apiRequest<unknown>('/system/configuration')
+  return systemConfigurationSchema.parse(result)
+}
+
+export async function updateSystemConfiguration(
+  input: UpdateSystemConfigurationInput,
+): Promise<SystemConfigurationSnapshot> {
+  const result = await apiRequest<unknown>('/system/configuration', {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  })
   return systemConfigurationSchema.parse(result)
 }

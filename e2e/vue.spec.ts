@@ -110,117 +110,136 @@ test('办公门户入口适配移动端且没有页面级横向溢出', async ({
 
 test('系统配置页展示实际启用的多模型与 Prompt 版本', async ({ page }) => {
   await useMockSession(page)
-  await page.route('**/api/v1/system/configuration', (route) =>
-    fulfillJson(route, {
-      capturedAt: '2026-08-15T03:00:00.000Z',
-      policy: {
-        source: 'environment',
-        mutationSupported: false,
-        restartRequired: true,
-        secretsExposed: false,
-      },
-      runtime: {
-        applicationName: 'ai-backend',
-        environment: 'development',
-        apiPrefix: 'api/v1',
-        port: 3000,
-        swaggerEnabled: true,
-      },
-      ai: {
-        enabled: true,
-        provider: 'qwen',
-        defaultModelId: 'qwen',
-        defaultModel: 'qwen-e2e-model',
-        credentialConfigured: true,
-        models: [
-          {
-            id: 'openai',
-            provider: 'openai',
-            model: 'gpt-e2e-model',
-            enabled: true,
-            isDefault: false,
-            credentialConfigured: true,
-          },
-          {
-            id: 'qwen',
-            provider: 'qwen',
-            model: 'qwen-e2e-model',
-            enabled: true,
-            isDefault: true,
-            credentialConfigured: true,
-          },
-          {
-            id: 'deepseek',
-            provider: 'deepseek',
-            model: 'deepseek-e2e-model',
-            enabled: false,
-            isDefault: false,
-            credentialConfigured: false,
-          },
-        ],
-        requestTimeoutMs: 30000,
-        maxOutputTokens: 2048,
-        maxRetries: 0,
-        contextMessageLimit: 20,
-        rateLimitWindowSeconds: 60,
-        userRateLimit: 10,
-        embeddingModel: 'text-embedding-e2e',
-        embeddingDimensions: 1536,
-        embeddingBatchSize: 64,
-      },
-      retrieval: {
-        driver: 'pgvector',
-        mode: 'hybrid',
-        keywordCandidateMultiplier: 4,
-        keywordMinimumScore: 0.1,
-        rrfK: 60,
-        queryRewriteAiEnabled: false,
-        rerankEnabled: true,
-        rerankCandidateMultiplier: 4,
-        minimumEvidenceScore: 0.3,
-        strongEvidenceScore: 0.65,
-        requireCriticalExactTermMatch: true,
-        answerabilityAiEnabled: false,
-      },
-      rag: {
-        promptVersion: 'rag-structured-response-e2e',
-        structuredResponseEnabled: true,
-        reasoningEffort: 'minimal',
-        customerSafetyEnabled: true,
-        customerSafetyAiEnabled: false,
-        citationExcerptEnabled: true,
-        citationExcerptMaxChars: 300,
-        conflictDetectionEnabled: true,
-        conflictDetectionAiEnabled: false,
-        multiTurnQueryRewriteEnabled: true,
-        multiTurnQueryRewriteAiEnabled: false,
-        multiTurnHistoryMessageLimit: 6,
-      },
-      documents: {
-        storageDriver: 'local',
-        storageCredentialConfigured: true,
-        maxFileSizeBytes: 20971520,
-        batchMaxFiles: 20,
-        batchMaxTotalSizeBytes: 104857600,
-        allowedExtensions: ['.pdf', '.docx'],
-        chunkSizeChars: 1000,
-        chunkOverlapChars: 150,
-        processingTimeoutMs: 120000,
-        ocrEnabled: false,
-        ocrModel: null,
-        pipelineWorkerEnabled: true,
-        pipelineRecoveryEnabled: true,
-        pipelineMaxAttempts: 3,
-      },
-      evaluation: {
-        workerEnabled: true,
-        pollingIntervalMs: 1000,
-        maxCasesPerSuite: 200,
-        maxAttempts: 2,
-        caseTimeoutMs: 120000,
-      },
-    }),
-  )
+  const systemConfiguration = {
+    capturedAt: '2026-08-15T03:00:00.000Z',
+    policy: {
+      source: 'environment',
+      mutationSupported: true,
+      mutationAllowed: true,
+      restartRequired: true,
+      secretsExposed: false,
+      activeRevision: 0,
+      currentRevision: 0,
+    },
+    pending: null,
+    runtime: {
+      applicationName: 'ai-backend',
+      environment: 'development',
+      apiPrefix: 'api/v1',
+      port: 3000,
+      swaggerEnabled: true,
+    },
+    ai: {
+      enabled: true,
+      provider: 'qwen',
+      defaultModelId: 'qwen',
+      defaultModel: 'qwen-e2e-model',
+      credentialConfigured: true,
+      models: [
+        {
+          id: 'openai',
+          provider: 'openai',
+          model: 'gpt-e2e-model',
+          enabled: true,
+          isDefault: false,
+          credentialConfigured: true,
+        },
+        {
+          id: 'qwen',
+          provider: 'qwen',
+          model: 'qwen-e2e-model',
+          enabled: true,
+          isDefault: true,
+          credentialConfigured: true,
+        },
+        {
+          id: 'deepseek',
+          provider: 'deepseek',
+          model: 'deepseek-e2e-model',
+          enabled: false,
+          isDefault: false,
+          credentialConfigured: false,
+        },
+      ],
+      requestTimeoutMs: 30000,
+      maxOutputTokens: 2048,
+      maxRetries: 0,
+      contextMessageLimit: 20,
+      rateLimitWindowSeconds: 60,
+      userRateLimit: 10,
+      embeddingModel: 'text-embedding-e2e',
+      embeddingDimensions: 1536,
+      embeddingBatchSize: 64,
+    },
+    retrieval: {
+      driver: 'pgvector',
+      mode: 'hybrid',
+      keywordCandidateMultiplier: 4,
+      keywordMinimumScore: 0.1,
+      rrfK: 60,
+      queryRewriteAiEnabled: false,
+      rerankEnabled: true,
+      rerankCandidateMultiplier: 4,
+      minimumEvidenceScore: 0.3,
+      strongEvidenceScore: 0.65,
+      requireCriticalExactTermMatch: true,
+      answerabilityAiEnabled: false,
+    },
+    rag: {
+      promptVersion: 'rag-structured-response-e2e',
+      structuredResponseEnabled: true,
+      reasoningEffort: 'minimal',
+      customerSafetyEnabled: true,
+      customerSafetyAiEnabled: false,
+      citationExcerptEnabled: true,
+      citationExcerptMaxChars: 300,
+      conflictDetectionEnabled: true,
+      conflictDetectionAiEnabled: false,
+      multiTurnQueryRewriteEnabled: true,
+      multiTurnQueryRewriteAiEnabled: false,
+      multiTurnHistoryMessageLimit: 6,
+    },
+    documents: {
+      storageDriver: 'local',
+      storageCredentialConfigured: true,
+      maxFileSizeBytes: 20971520,
+      batchMaxFiles: 20,
+      batchMaxTotalSizeBytes: 104857600,
+      allowedExtensions: ['.pdf', '.docx'],
+      chunkSizeChars: 1000,
+      chunkOverlapChars: 150,
+      processingTimeoutMs: 120000,
+      ocrEnabled: false,
+      ocrModel: null,
+      pipelineWorkerEnabled: true,
+      pipelineRecoveryEnabled: true,
+      pipelineMaxAttempts: 3,
+    },
+    evaluation: {
+      workerEnabled: true,
+      pollingIntervalMs: 1000,
+      maxCasesPerSuite: 200,
+      maxAttempts: 2,
+      caseTimeoutMs: 120000,
+    },
+  }
+  let updateBody: Record<string, unknown> | null = null
+  await page.route('**/api/v1/system/configuration', (route) => {
+    if (route.request().method() === 'PATCH') {
+      updateBody = route.request().postDataJSON() as Record<string, unknown>
+      return fulfillJson(route, {
+        ...systemConfiguration,
+        policy: { ...systemConfiguration.policy, currentRevision: 1 },
+        pending: {
+          revision: 1,
+          aiDefaultModelId: 'openai',
+          ragPromptVersion: 'rag-structured-response-2.0',
+          updatedAt: '2026-08-15T04:00:00.000Z',
+        },
+      })
+    }
+    return fulfillJson(route, systemConfiguration)
+  })
 
   await page.goto('/settings')
 
@@ -230,6 +249,26 @@ test('系统配置页展示实际启用的多模型与 Prompt 版本', async ({ 
   await expect(page.getByText(/千问 · qwen-e2e-model .*默认.*凭据已配置/)).toBeVisible()
   await expect(page.getByText('rag-structured-response-e2e', { exact: true }).first()).toBeVisible()
   await expect(page.getByText(/deepseek-e2e-model/)).toHaveCount(0)
+
+  await page.getByRole('button', { name: '编辑配置' }).click()
+  const dialog = page.getByRole('dialog', { name: '编辑系统配置' })
+  await expect(dialog).toBeVisible()
+  await expect(dialog.getByText('千问 · qwen-e2e-model', { exact: true })).toBeVisible()
+  await expect(page.getByRole('textbox', { name: 'Prompt 版本' })).toHaveValue(
+    'rag-structured-response-e2e',
+  )
+
+  await dialog.getByText('千问 · qwen-e2e-model', { exact: true }).click()
+  await page.getByRole('option', { name: 'OpenAI · gpt-e2e-model' }).click()
+  await page.getByRole('textbox', { name: 'Prompt 版本' }).fill('rag-structured-response-2.0')
+  await dialog.getByRole('button', { name: '保存配置' }).click()
+
+  await expect(page.getByText('配置 revision 1 等待生效')).toBeVisible()
+  expect(updateBody).toEqual({
+    revision: 0,
+    aiDefaultModelId: 'openai',
+    ragPromptVersion: 'rag-structured-response-2.0',
+  })
 })
 
 test('模型选择器把选中的模型传给问答接口', async ({ page }) => {

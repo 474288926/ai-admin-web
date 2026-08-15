@@ -1,11 +1,20 @@
 export interface SystemConfigurationSnapshot {
   capturedAt: string
   policy: {
-    source: 'environment'
-    mutationSupported: false
+    source: 'environment' | 'environment+database'
+    mutationSupported: true
+    mutationAllowed: boolean
     restartRequired: true
     secretsExposed: false
+    activeRevision: number
+    currentRevision: number
   }
+  pending: {
+    revision: number
+    aiDefaultModelId: string
+    ragPromptVersion: string
+    updatedAt: string
+  } | null
   runtime: {
     applicationName: string
     environment: string
@@ -88,4 +97,10 @@ export interface SystemConfigurationSnapshot {
     maxAttempts: number
     caseTimeoutMs: number
   }
+}
+
+export interface UpdateSystemConfigurationInput {
+  revision: number
+  aiDefaultModelId?: string
+  ragPromptVersion?: string
 }

@@ -1,15 +1,22 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { getSystemConfiguration } from '@/services/api/system-configuration'
+import {
+  getSystemConfiguration,
+  updateSystemConfiguration,
+} from '@/services/api/system-configuration'
 
 const snapshot = {
   capturedAt: '2026-08-12T08:00:00.000Z',
   policy: {
     source: 'environment',
-    mutationSupported: false,
+    mutationSupported: true,
+    mutationAllowed: true,
     restartRequired: true,
     secretsExposed: false,
+    activeRevision: 0,
+    currentRevision: 0,
   },
+  pending: null,
   runtime: {
     applicationName: 'ai-backend',
     environment: 'development',
@@ -127,5 +134,40 @@ describe('system configuration api', () => {
     expect(result.policy.secretsExposed).toBe(false)
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain('/system/configuration')
     expect(JSON.stringify(result)).not.toContain('apiKey')
+  })
+
+  it('saves an optimistic configuration update', async () => {
+    const updated = {
+      ...snapshot,
+      policy: { ...snapshot.policy, currentRevision: 1 },
+      pending: {
+        revision: 1,
+        aiDefaultModelId: 'openai',
+        ragPromptVersion: 'rag-structured-response-2.0',
+        updatedAt: '2026-08-15T04:00:00.000Z',
+      },
+    }
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(updated), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await updateSystemConfiguration({
+      revision: 0,
+      aiDefaultModelId: 'openai',
+      ragPromptVersion: 'rag-structured-response-2.0',
+    })
+
+    expect(result.pending?.revision).toBe(1)
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/system/configuration'),
+      expect.objectContaining({
+        method: 'PATCH',
+        body: expect.stringContaining('rag-structured-response-2.0'),
+      }),
+    )
   })
 })
