@@ -4672,7 +4672,7 @@ input {
 }
 .settings-history-list > li {
   display: grid;
-  grid-template-columns: minmax(250px, 0.8fr) minmax(0, 1.7fr);
+  grid-template-columns: minmax(250px, 0.8fr) minmax(0, 1.7fr) auto;
   gap: 24px;
   padding: 16px 2px;
   border-bottom: 1px solid #e8ebf0;
@@ -4727,6 +4727,10 @@ input {
 .settings-history-changes .el-icon {
   flex: 0 0 auto;
   color: #a2a7b6;
+}
+.settings-history-actions {
+  display: flex;
+  align-items: center;
 }
 .settings-security-note {
   display: grid;
@@ -5428,6 +5432,9 @@ input {
   .settings-history-list > li {
     grid-template-columns: 1fr;
     gap: 12px;
+  }
+  .settings-history-actions {
+    justify-content: flex-end;
   }
   .settings-history-changes > div {
     display: grid;

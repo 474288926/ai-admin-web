@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   getSystemConfiguration,
   getSystemConfigurationHistory,
+  rollbackSystemConfiguration,
   updateSystemConfiguration,
 } from '@/services/api/system-configuration'
 
@@ -187,6 +188,7 @@ describe('system configuration api', () => {
                 email: 'admin@example.com',
                 accessToken: 'must-never-be-returned',
               },
+              operation: { type: 'rollback', targetRevision: 1 },
               changes: {
                 aiDefaultModelId: { before: 'qwen', after: 'openai' },
                 apiKey: 'must-never-be-returned',
@@ -215,6 +217,7 @@ describe('system configuration api', () => {
         name: '配置管理员',
         email: 'admin@example.com',
       },
+      operation: { type: 'rollback', targetRevision: 1 },
       changes: {
         aiDefaultModelId: { before: 'qwen', after: 'openai' },
       },
@@ -223,5 +226,39 @@ describe('system configuration api', () => {
     expect(serialized).not.toContain('must-never-be-returned')
     expect(serialized).not.toContain('private.example.com')
     expect(serialized).not.toContain('apiKey')
+  })
+
+  it('creates a new revision from a rollback target', async () => {
+    const rolledBack = {
+      ...snapshot,
+      policy: { ...snapshot.policy, currentRevision: 4 },
+      pending: {
+        revision: 4,
+        aiDefaultModelId: 'openai',
+        ragPromptVersion: 'rag-structured-response-1.0',
+        updatedAt: '2026-08-15T07:00:00.000Z',
+      },
+    }
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(rolledBack), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await rollbackSystemConfiguration({
+      revision: 3,
+      targetRevision: 1,
+    })
+
+    expect(result.pending?.revision).toBe(4)
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/system/configuration/rollback'),
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ revision: 3, targetRevision: 1 }),
+      }),
+    )
   })
 })

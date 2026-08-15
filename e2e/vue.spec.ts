@@ -113,13 +113,13 @@ test('系统配置页展示实际启用的多模型与 Prompt 版本', async ({ 
   const systemConfiguration = {
     capturedAt: '2026-08-15T03:00:00.000Z',
     policy: {
-      source: 'environment',
+      source: 'environment+database',
       mutationSupported: true,
       mutationAllowed: true,
       restartRequired: true,
       secretsExposed: false,
-      activeRevision: 0,
-      currentRevision: 0,
+      activeRevision: 2,
+      currentRevision: 2,
     },
     pending: null,
     runtime: {
@@ -224,49 +224,84 @@ test('系统配置页展示实际启用的多模型与 Prompt 版本', async ({ 
     },
   }
   let updateBody: Record<string, unknown> | null = null
+  let rollbackBody: Record<string, unknown> | null = null
+  let historyItems: Record<string, unknown>[] = [
+    {
+      id: 'change-e2e-2',
+      revision: 2,
+      createdAt: '2026-08-15T05:00:00.000Z',
+      actor: {
+        id: 'admin-e2e',
+        name: '配置管理员',
+        email: 'admin@example.com',
+      },
+      operation: { type: 'update' },
+      changes: {
+        aiDefaultModelId: { before: 'openai', after: 'qwen' },
+        ragPromptVersion: {
+          before: 'rag-structured-response-1.0',
+          after: 'rag-structured-response-e2e',
+        },
+      },
+    },
+    {
+      id: 'change-e2e-1',
+      revision: 1,
+      createdAt: '2026-08-14T05:00:00.000Z',
+      actor: null,
+      operation: { type: 'update' },
+      changes: {
+        ragPromptVersion: {
+          before: 'rag-structured-response-0.9',
+          after: 'rag-structured-response-1.0',
+        },
+      },
+    },
+  ]
   await page.route('**/api/v1/system/configuration/history?limit=20', (route) =>
-    fulfillJson(route, {
-      items: [
-        {
-          id: 'change-e2e-2',
-          revision: 2,
-          createdAt: '2026-08-15T05:00:00.000Z',
-          actor: {
-            id: 'admin-e2e',
-            name: '配置管理员',
-            email: 'admin@example.com',
-          },
-          changes: {
-            aiDefaultModelId: { before: 'openai', after: 'qwen' },
-            ragPromptVersion: {
-              before: 'rag-structured-response-1.0',
-              after: 'rag-structured-response-e2e',
-            },
-          },
-        },
-        {
-          id: 'change-e2e-1',
-          revision: 1,
-          createdAt: '2026-08-14T05:00:00.000Z',
-          actor: null,
-          changes: {
-            ragPromptVersion: {
-              before: 'rag-structured-response-0.9',
-              after: 'rag-structured-response-1.0',
-            },
-          },
-        },
-      ],
-    }),
+    fulfillJson(route, { items: historyItems }),
   )
+  await page.route('**/api/v1/system/configuration/rollback', (route) => {
+    rollbackBody = route.request().postDataJSON() as Record<string, unknown>
+    historyItems = [
+      {
+        id: 'change-e2e-4',
+        revision: 4,
+        createdAt: '2026-08-15T07:00:00.000Z',
+        actor: {
+          id: 'admin-e2e',
+          name: '配置管理员',
+          email: 'admin@example.com',
+        },
+        operation: { type: 'rollback', targetRevision: 1 },
+        changes: {
+          ragPromptVersion: {
+            before: 'rag-structured-response-2.0',
+            after: 'rag-structured-response-1.0',
+          },
+        },
+      },
+      ...historyItems,
+    ]
+    return fulfillJson(route, {
+      ...systemConfiguration,
+      policy: { ...systemConfiguration.policy, currentRevision: 4 },
+      pending: {
+        revision: 4,
+        aiDefaultModelId: 'openai',
+        ragPromptVersion: 'rag-structured-response-1.0',
+        updatedAt: '2026-08-15T07:00:00.000Z',
+      },
+    })
+  })
   await page.route('**/api/v1/system/configuration', (route) => {
     if (route.request().method() === 'PATCH') {
       updateBody = route.request().postDataJSON() as Record<string, unknown>
       return fulfillJson(route, {
         ...systemConfiguration,
-        policy: { ...systemConfiguration.policy, currentRevision: 1 },
+        policy: { ...systemConfiguration.policy, currentRevision: 3 },
         pending: {
-          revision: 1,
+          revision: 3,
           aiDefaultModelId: 'openai',
           ragPromptVersion: 'rag-structured-response-2.0',
           updatedAt: '2026-08-15T04:00:00.000Z',
@@ -304,13 +339,22 @@ test('系统配置页展示实际启用的多模型与 Prompt 版本', async ({ 
   await page.getByRole('textbox', { name: 'Prompt 版本' }).fill('rag-structured-response-2.0')
   await dialog.getByRole('button', { name: '保存配置' }).click()
 
-  await expect(page.getByText('配置 revision 1 等待生效')).toBeVisible()
+  await expect(page.getByText('配置 revision 3 等待生效')).toBeVisible()
   await expect(dialog).toBeHidden()
   expect(updateBody).toEqual({
-    revision: 0,
+    revision: 2,
     aiDefaultModelId: 'openai',
     ragPromptVersion: 'rag-structured-response-2.0',
   })
+
+  await page.getByRole('button', { name: '恢复到 revision 1' }).click()
+  const rollbackDialog = page.getByRole('dialog', { name: '确认恢复到 revision 1' })
+  await expect(rollbackDialog).toBeVisible()
+  await rollbackDialog.getByRole('button', { name: '确认恢复' }).click()
+
+  await expect(page.getByText('配置 revision 4 等待生效')).toBeVisible()
+  await expect(page.getByText('回滚到 revision 1')).toBeVisible()
+  expect(rollbackBody).toEqual({ revision: 3, targetRevision: 1 })
 
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/settings')

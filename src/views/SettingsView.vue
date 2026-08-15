@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   CircleCheck,
   Clock,
@@ -11,6 +11,7 @@ import {
   Files,
   Lock,
   Refresh,
+  RefreshLeft,
   Right,
   Search,
   Setting,
@@ -21,11 +22,13 @@ import { providerLabel } from '@/services/ai-usage'
 import {
   getSystemConfiguration,
   getSystemConfigurationHistory,
+  rollbackSystemConfiguration,
   updateSystemConfiguration,
 } from '@/services/api/system-configuration'
 
 const queryClient = useQueryClient()
 const editVisible = ref(false)
+const rollbackTargetRevision = ref<number | null>(null)
 const editForm = reactive({
   aiDefaultModelId: '',
   ragPromptVersion: '',
@@ -54,6 +57,10 @@ const configurableModels = computed(() =>
 
 const updateMutation = useMutation({
   mutationFn: updateSystemConfiguration,
+})
+
+const rollbackMutation = useMutation({
+  mutationFn: rollbackSystemConfiguration,
 })
 
 const summaryCards = computed(() => {
@@ -132,6 +139,39 @@ async function saveConfiguration(): Promise<void> {
       await configurationQuery.refetch()
     }
     ElMessage.error(error instanceof ApiError ? error.message : '系统配置保存失败，请稍后重试')
+  }
+}
+
+async function rollbackToRevision(targetRevision: number): Promise<void> {
+  const value = configuration.value
+  if (!value?.policy.mutationAllowed) return
+
+  try {
+    await ElMessageBox.confirm(
+      `系统将创建新的 revision，并恢复 revision ${targetRevision} 当时的默认模型和 Prompt 版本。全部后端实例仍需重启后生效。`,
+      `确认恢复到 revision ${targetRevision}`,
+      {
+        type: 'warning',
+        confirmButtonText: '确认恢复',
+        cancelButtonText: '取消',
+      },
+    )
+    rollbackTargetRevision.value = targetRevision
+    const updated = await rollbackMutation.mutateAsync({
+      revision: value.policy.currentRevision,
+      targetRevision,
+    })
+    queryClient.setQueryData(['system-configuration'], updated)
+    await queryClient.invalidateQueries({ queryKey: ['system-configuration-history'] })
+    ElMessage.success(`已创建回滚 revision ${updated.policy.currentRevision}`)
+  } catch (error) {
+    if (error === 'cancel' || error === 'close') return
+    if (error instanceof ApiError && error.status === 409) {
+      await refreshConfiguration()
+    }
+    ElMessage.error(error instanceof ApiError ? error.message : '系统配置回滚失败，请稍后重试')
+  } finally {
+    rollbackTargetRevision.value = null
   }
 }
 
@@ -558,6 +598,9 @@ async function refreshConfiguration(): Promise<void> {
           <li v-for="item in configurationHistory" :key="item.id">
             <div class="settings-history-meta">
               <el-tag size="small" effect="plain">revision {{ item.revision }}</el-tag>
+              <el-tag v-if="item.operation.type === 'rollback'" size="small" type="warning">
+                回滚到 revision {{ item.operation.targetRevision }}
+              </el-tag>
               <strong>{{ historyActorName(item.actor) }}</strong>
               <span v-if="historyActorDetail(item.actor)">{{
                 historyActorDetail(item.actor)
@@ -577,6 +620,24 @@ async function refreshConfiguration(): Promise<void> {
                 <el-icon><Right /></el-icon>
                 <code>{{ item.changes.ragPromptVersion.after }}</code>
               </div>
+            </div>
+            <div
+              v-if="
+                configuration.policy.mutationAllowed &&
+                item.revision < configuration.policy.currentRevision
+              "
+              class="settings-history-actions"
+            >
+              <el-button
+                :icon="RefreshLeft"
+                :loading="
+                  rollbackMutation.isPending.value && rollbackTargetRevision === item.revision
+                "
+                :disabled="rollbackMutation.isPending.value"
+                @click="rollbackToRevision(item.revision)"
+              >
+                恢复到 revision {{ item.revision }}
+              </el-button>
             </div>
           </li>
         </ol>
