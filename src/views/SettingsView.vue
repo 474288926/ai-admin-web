@@ -32,6 +32,11 @@ const rollbackTargetRevision = ref<number | null>(null)
 const editForm = reactive({
   aiDefaultModelId: '',
   ragPromptVersion: '',
+  aiMaxOutputTokens: 2048,
+  aiContextMessageLimit: 20,
+  retrievalKeywordMinimumScore: 0.1,
+  rerankMinimumEvidenceScore: 0.3,
+  rerankStrongEvidenceScore: 0.65,
 })
 
 const configurationQuery = useQuery({
@@ -111,6 +116,15 @@ function openEditor(): void {
   if (!value) return
   editForm.aiDefaultModelId = value.pending?.aiDefaultModelId ?? value.ai.defaultModelId
   editForm.ragPromptVersion = value.pending?.ragPromptVersion ?? value.rag.promptVersion
+  editForm.aiMaxOutputTokens = value.pending?.aiMaxOutputTokens ?? value.ai.maxOutputTokens
+  editForm.aiContextMessageLimit =
+    value.pending?.aiContextMessageLimit ?? value.ai.contextMessageLimit
+  editForm.retrievalKeywordMinimumScore =
+    value.pending?.retrievalKeywordMinimumScore ?? value.retrieval.keywordMinimumScore
+  editForm.rerankMinimumEvidenceScore =
+    value.pending?.rerankMinimumEvidenceScore ?? value.retrieval.minimumEvidenceScore
+  editForm.rerankStrongEvidenceScore =
+    value.pending?.rerankStrongEvidenceScore ?? value.retrieval.strongEvidenceScore
   editVisible.value = true
 }
 
@@ -123,12 +137,43 @@ async function saveConfiguration(): Promise<void> {
     ElMessage.warning('Prompt 版本格式无效')
     return
   }
+  if (
+    !Number.isInteger(editForm.aiMaxOutputTokens) ||
+    editForm.aiMaxOutputTokens < 1 ||
+    editForm.aiMaxOutputTokens > 32768 ||
+    !Number.isInteger(editForm.aiContextMessageLimit) ||
+    editForm.aiContextMessageLimit < 1 ||
+    editForm.aiContextMessageLimit > 200
+  ) {
+    ElMessage.warning('Token 与上下文消息数必须是有效整数')
+    return
+  }
+  if (
+    editForm.retrievalKeywordMinimumScore < 0 ||
+    editForm.retrievalKeywordMinimumScore > 1 ||
+    editForm.rerankMinimumEvidenceScore < 0 ||
+    editForm.rerankMinimumEvidenceScore > 1 ||
+    editForm.rerankStrongEvidenceScore < 0 ||
+    editForm.rerankStrongEvidenceScore > 1
+  ) {
+    ElMessage.warning('检索与证据分必须在 0 到 1 之间')
+    return
+  }
+  if (editForm.rerankStrongEvidenceScore <= editForm.rerankMinimumEvidenceScore) {
+    ElMessage.warning('强证据分必须高于最低证据分')
+    return
+  }
 
   try {
     const updated = await updateMutation.mutateAsync({
       revision: value.policy.currentRevision,
       aiDefaultModelId: editForm.aiDefaultModelId,
       ragPromptVersion: promptVersion,
+      aiMaxOutputTokens: editForm.aiMaxOutputTokens,
+      aiContextMessageLimit: editForm.aiContextMessageLimit,
+      retrievalKeywordMinimumScore: editForm.retrievalKeywordMinimumScore,
+      rerankMinimumEvidenceScore: editForm.rerankMinimumEvidenceScore,
+      rerankStrongEvidenceScore: editForm.rerankStrongEvidenceScore,
     })
     queryClient.setQueryData(['system-configuration'], updated)
     await queryClient.invalidateQueries({ queryKey: ['system-configuration-history'] })
@@ -148,7 +193,7 @@ async function rollbackToRevision(targetRevision: number): Promise<void> {
 
   try {
     await ElMessageBox.confirm(
-      `系统将创建新的 revision，并恢复 revision ${targetRevision} 当时的默认模型和 Prompt 版本。全部后端实例仍需重启后生效。`,
+      `系统将创建新的 revision，并恢复 revision ${targetRevision} 当时的全部受管配置。全部后端实例仍需重启后生效。`,
       `确认恢复到 revision ${targetRevision}`,
       {
         type: 'warning',
@@ -206,6 +251,12 @@ function formatCapturedAt(value: string): string {
   }).format(new Date(value))
 }
 
+function pendingDescription(): string {
+  const pending = configuration.value?.pending
+  if (!pending) return ''
+  return `默认模型 ${pending.aiDefaultModelId}，Prompt ${pending.ragPromptVersion}，输出 ${pending.aiMaxOutputTokens} Token，上下文 ${pending.aiContextMessageLimit} 条。保存时间：${formatCapturedAt(pending.updatedAt)}`
+}
+
 function historyActorName(actor: { name: string | null; email: string } | null): string {
   return actor?.name ?? actor?.email ?? '已删除用户'
 }
@@ -249,7 +300,7 @@ async function refreshConfiguration(): Promise<void> {
 
     <el-alert
       title="配置由环境基线与数据库覆盖共同管理"
-      description="默认模型和 Prompt 版本可在本页修改，并在后端重启后统一生效。密码、令牌、数据库地址和服务端点仍由部署环境管理，且不会通过接口返回。"
+      description="模型、Prompt、生成限制与检索证据门槛可在本页修改，并在后端重启后统一生效。密码、令牌、数据库地址和服务端点仍由部署环境管理，且不会通过接口返回。"
       type="info"
       show-icon
       :closable="false"
@@ -258,7 +309,7 @@ async function refreshConfiguration(): Promise<void> {
     <el-alert
       v-if="configuration?.pending"
       :title="`配置 revision ${configuration.pending.revision} 等待生效`"
-      :description="`默认模型将切换为 ${configuration.pending.aiDefaultModelId}，Prompt 版本将切换为 ${configuration.pending.ragPromptVersion}。保存时间：${formatCapturedAt(configuration.pending.updatedAt)}`"
+      :description="pendingDescription()"
       type="warning"
       show-icon
       :closable="false"
@@ -350,6 +401,13 @@ async function refreshConfiguration(): Promise<void> {
             ><strong
               >{{ milliseconds(configuration.ai.requestTimeoutMs) }} /
               {{ configuration.ai.maxRetries }} 次</strong
+            >
+          </div>
+          <div class="settings-row">
+            <span>输出 Token / 上下文</span
+            ><strong
+              >{{ configuration.ai.maxOutputTokens }} /
+              {{ configuration.ai.contextMessageLimit }} 条</strong
             >
           </div>
           <div class="settings-row">
@@ -620,6 +678,36 @@ async function refreshConfiguration(): Promise<void> {
                 <el-icon><Right /></el-icon>
                 <code>{{ item.changes.ragPromptVersion.after }}</code>
               </div>
+              <div v-if="item.changes.aiMaxOutputTokens">
+                <span>输出 Token</span>
+                <code>{{ item.changes.aiMaxOutputTokens.before }}</code>
+                <el-icon><Right /></el-icon>
+                <code>{{ item.changes.aiMaxOutputTokens.after }}</code>
+              </div>
+              <div v-if="item.changes.aiContextMessageLimit">
+                <span>上下文消息</span>
+                <code>{{ item.changes.aiContextMessageLimit.before }}</code>
+                <el-icon><Right /></el-icon>
+                <code>{{ item.changes.aiContextMessageLimit.after }}</code>
+              </div>
+              <div v-if="item.changes.retrievalKeywordMinimumScore">
+                <span>关键词最低分</span>
+                <code>{{ item.changes.retrievalKeywordMinimumScore.before }}</code>
+                <el-icon><Right /></el-icon>
+                <code>{{ item.changes.retrievalKeywordMinimumScore.after }}</code>
+              </div>
+              <div v-if="item.changes.rerankMinimumEvidenceScore">
+                <span>最低证据分</span>
+                <code>{{ item.changes.rerankMinimumEvidenceScore.before }}</code>
+                <el-icon><Right /></el-icon>
+                <code>{{ item.changes.rerankMinimumEvidenceScore.after }}</code>
+              </div>
+              <div v-if="item.changes.rerankStrongEvidenceScore">
+                <span>强证据分</span>
+                <code>{{ item.changes.rerankStrongEvidenceScore.before }}</code>
+                <el-icon><Right /></el-icon>
+                <code>{{ item.changes.rerankStrongEvidenceScore.after }}</code>
+              </div>
             </div>
             <div
               v-if="
@@ -655,7 +743,7 @@ async function refreshConfiguration(): Promise<void> {
       </section>
     </template>
 
-    <el-dialog v-model="editVisible" title="编辑系统配置" width="min(520px, calc(100vw - 32px))">
+    <el-dialog v-model="editVisible" title="编辑系统配置" width="min(620px, calc(100vw - 32px))">
       <el-form label-position="top">
         <el-form-item label="默认生成模型" required>
           <el-select v-model="editForm.aiDefaultModelId" style="width: 100%">
@@ -674,6 +762,52 @@ async function refreshConfiguration(): Promise<void> {
             placeholder="rag-structured-response-2.0"
           />
         </el-form-item>
+        <div class="settings-edit-grid">
+          <el-form-item label="最大输出 Token" required>
+            <el-input-number
+              v-model="editForm.aiMaxOutputTokens"
+              :min="1"
+              :max="32768"
+              :step="256"
+              controls-position="right"
+            />
+          </el-form-item>
+          <el-form-item label="上下文消息数" required>
+            <el-input-number
+              v-model="editForm.aiContextMessageLimit"
+              :min="1"
+              :max="200"
+              controls-position="right"
+            />
+          </el-form-item>
+          <el-form-item label="关键词最低分" required>
+            <el-input-number
+              v-model="editForm.retrievalKeywordMinimumScore"
+              :min="0"
+              :max="1"
+              :step="0.05"
+              controls-position="right"
+            />
+          </el-form-item>
+          <el-form-item label="最低证据分" required>
+            <el-input-number
+              v-model="editForm.rerankMinimumEvidenceScore"
+              :min="0"
+              :max="1"
+              :step="0.05"
+              controls-position="right"
+            />
+          </el-form-item>
+          <el-form-item label="强证据分" required>
+            <el-input-number
+              v-model="editForm.rerankStrongEvidenceScore"
+              :min="0"
+              :max="1"
+              :step="0.05"
+              controls-position="right"
+            />
+          </el-form-item>
+        </div>
         <el-alert
           title="保存后不会立即切换运行配置"
           description="请在维护窗口重启全部后端实例，使同一 revision 在所有实例统一生效。"
