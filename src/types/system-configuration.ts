@@ -13,6 +13,11 @@ export interface SystemConfigurationSnapshot {
     revision: number
     aiDefaultModelId: string
     ragPromptVersion: string
+    aiMaxOutputTokens: number
+    aiContextMessageLimit: number
+    retrievalKeywordMinimumScore: number
+    rerankMinimumEvidenceScore: number
+    rerankStrongEvidenceScore: number
     updatedAt: string
   } | null
   runtime: {
@@ -103,6 +108,11 @@ export interface UpdateSystemConfigurationInput {
   revision: number
   aiDefaultModelId?: string
   ragPromptVersion?: string
+  aiMaxOutputTokens?: number
+  aiContextMessageLimit?: number
+  retrievalKeywordMinimumScore?: number
+  rerankMinimumEvidenceScore?: number
+  rerankStrongEvidenceScore?: number
 }
 
 export interface RollbackSystemConfigurationInput {
@@ -110,9 +120,9 @@ export interface RollbackSystemConfigurationInput {
   targetRevision: number
 }
 
-export interface SystemConfigurationHistoryValueChange {
-  before: string
-  after: string
+export interface SystemConfigurationHistoryValueChange<T extends string | number> {
+  before: T
+  after: T
 }
 
 export interface SystemConfigurationHistory {
@@ -127,8 +137,13 @@ export interface SystemConfigurationHistory {
     } | null
     operation: { type: 'update' } | { type: 'rollback'; targetRevision: number }
     changes: {
-      aiDefaultModelId?: SystemConfigurationHistoryValueChange
-      ragPromptVersion?: SystemConfigurationHistoryValueChange
+      aiDefaultModelId?: SystemConfigurationHistoryValueChange<string>
+      ragPromptVersion?: SystemConfigurationHistoryValueChange<string>
+      aiMaxOutputTokens?: SystemConfigurationHistoryValueChange<number>
+      aiContextMessageLimit?: SystemConfigurationHistoryValueChange<number>
+      retrievalKeywordMinimumScore?: SystemConfigurationHistoryValueChange<number>
+      rerankMinimumEvidenceScore?: SystemConfigurationHistoryValueChange<number>
+      rerankStrongEvidenceScore?: SystemConfigurationHistoryValueChange<number>
     }
   }[]
 }

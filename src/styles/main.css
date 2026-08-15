@@ -4708,7 +4708,7 @@ input {
   gap: 9px;
 }
 .settings-history-changes span {
-  width: 78px;
+  width: 104px;
   flex: 0 0 auto;
   color: #737a8f;
   font-size: 12px;
@@ -4731,6 +4731,14 @@ input {
 .settings-history-actions {
   display: flex;
   align-items: center;
+}
+.settings-edit-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 16px;
+}
+.settings-edit-grid .el-input-number {
+  width: 100%;
 }
 .settings-security-note {
   display: grid;
@@ -5438,7 +5446,10 @@ input {
   }
   .settings-history-changes > div {
     display: grid;
-    grid-template-columns: 78px minmax(0, 1fr) 16px minmax(0, 1fr);
+    grid-template-columns: 104px minmax(0, 1fr) 16px minmax(0, 1fr);
+  }
+  .settings-edit-grid {
+    grid-template-columns: 1fr;
   }
   .settings-security-note > .el-tag {
     grid-column: 2;

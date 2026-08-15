@@ -242,6 +242,11 @@ test('系统配置页展示实际启用的多模型与 Prompt 版本', async ({ 
           before: 'rag-structured-response-1.0',
           after: 'rag-structured-response-e2e',
         },
+        aiMaxOutputTokens: { before: 1024, after: 2048 },
+        aiContextMessageLimit: { before: 10, after: 20 },
+        retrievalKeywordMinimumScore: { before: 0.05, after: 0.1 },
+        rerankMinimumEvidenceScore: { before: 0.2, after: 0.3 },
+        rerankStrongEvidenceScore: { before: 0.6, after: 0.65 },
       },
     },
     {
@@ -279,6 +284,7 @@ test('系统配置页展示实际启用的多模型与 Prompt 版本', async ({ 
             before: 'rag-structured-response-2.0',
             after: 'rag-structured-response-1.0',
           },
+          aiMaxOutputTokens: { before: 4096, after: 1024 },
         },
       },
       ...historyItems,
@@ -290,6 +296,11 @@ test('系统配置页展示实际启用的多模型与 Prompt 版本', async ({ 
         revision: 4,
         aiDefaultModelId: 'openai',
         ragPromptVersion: 'rag-structured-response-1.0',
+        aiMaxOutputTokens: 1024,
+        aiContextMessageLimit: 10,
+        retrievalKeywordMinimumScore: 0.05,
+        rerankMinimumEvidenceScore: 0.2,
+        rerankStrongEvidenceScore: 0.6,
         updatedAt: '2026-08-15T07:00:00.000Z',
       },
     })
@@ -304,6 +315,11 @@ test('系统配置页展示实际启用的多模型与 Prompt 版本', async ({ 
           revision: 3,
           aiDefaultModelId: 'openai',
           ragPromptVersion: 'rag-structured-response-2.0',
+          aiMaxOutputTokens: 4096,
+          aiContextMessageLimit: 30,
+          retrievalKeywordMinimumScore: 0.2,
+          rerankMinimumEvidenceScore: 0.4,
+          rerankStrongEvidenceScore: 0.8,
           updatedAt: '2026-08-15T04:00:00.000Z',
         },
       })
@@ -337,6 +353,31 @@ test('系统配置页展示实际启用的多模型与 Prompt 版本', async ({ 
   await dialog.getByText('千问 · qwen-e2e-model', { exact: true }).click()
   await page.getByRole('option', { name: 'OpenAI · gpt-e2e-model' }).click()
   await page.getByRole('textbox', { name: 'Prompt 版本' }).fill('rag-structured-response-2.0')
+  await dialog
+    .locator('.el-form-item')
+    .filter({ hasText: '最大输出 Token' })
+    .getByRole('spinbutton')
+    .fill('4096')
+  await dialog
+    .locator('.el-form-item')
+    .filter({ hasText: '上下文消息数' })
+    .getByRole('spinbutton')
+    .fill('30')
+  await dialog
+    .locator('.el-form-item')
+    .filter({ hasText: '关键词最低分' })
+    .getByRole('spinbutton')
+    .fill('0.2')
+  await dialog
+    .locator('.el-form-item')
+    .filter({ hasText: '最低证据分' })
+    .getByRole('spinbutton')
+    .fill('0.4')
+  await dialog
+    .locator('.el-form-item')
+    .filter({ hasText: '强证据分' })
+    .getByRole('spinbutton')
+    .fill('0.8')
   await dialog.getByRole('button', { name: '保存配置' }).click()
 
   await expect(page.getByText('配置 revision 3 等待生效')).toBeVisible()
@@ -345,6 +386,11 @@ test('系统配置页展示实际启用的多模型与 Prompt 版本', async ({ 
     revision: 2,
     aiDefaultModelId: 'openai',
     ragPromptVersion: 'rag-structured-response-2.0',
+    aiMaxOutputTokens: 4096,
+    aiContextMessageLimit: 30,
+    retrievalKeywordMinimumScore: 0.2,
+    rerankMinimumEvidenceScore: 0.4,
+    rerankStrongEvidenceScore: 0.8,
   })
 
   await page.getByRole('button', { name: '恢复到 revision 1' }).click()

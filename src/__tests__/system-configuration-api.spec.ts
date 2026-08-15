@@ -146,6 +146,11 @@ describe('system configuration api', () => {
         revision: 1,
         aiDefaultModelId: 'openai',
         ragPromptVersion: 'rag-structured-response-2.0',
+        aiMaxOutputTokens: 4096,
+        aiContextMessageLimit: 30,
+        retrievalKeywordMinimumScore: 0.2,
+        rerankMinimumEvidenceScore: 0.4,
+        rerankStrongEvidenceScore: 0.8,
         updatedAt: '2026-08-15T04:00:00.000Z',
       },
     }
@@ -161,6 +166,11 @@ describe('system configuration api', () => {
       revision: 0,
       aiDefaultModelId: 'openai',
       ragPromptVersion: 'rag-structured-response-2.0',
+      aiMaxOutputTokens: 4096,
+      aiContextMessageLimit: 30,
+      retrievalKeywordMinimumScore: 0.2,
+      rerankMinimumEvidenceScore: 0.4,
+      rerankStrongEvidenceScore: 0.8,
     })
 
     expect(result.pending?.revision).toBe(1)
@@ -191,6 +201,7 @@ describe('system configuration api', () => {
               operation: { type: 'rollback', targetRevision: 1 },
               changes: {
                 aiDefaultModelId: { before: 'qwen', after: 'openai' },
+                aiMaxOutputTokens: { before: 2048, after: 4096 },
                 apiKey: 'must-never-be-returned',
               },
               endpoint: 'https://private.example.com',
@@ -220,6 +231,7 @@ describe('system configuration api', () => {
       operation: { type: 'rollback', targetRevision: 1 },
       changes: {
         aiDefaultModelId: { before: 'qwen', after: 'openai' },
+        aiMaxOutputTokens: { before: 2048, after: 4096 },
       },
     })
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain('/system/configuration/history?limit=10')
@@ -236,6 +248,11 @@ describe('system configuration api', () => {
         revision: 4,
         aiDefaultModelId: 'openai',
         ragPromptVersion: 'rag-structured-response-1.0',
+        aiMaxOutputTokens: 2048,
+        aiContextMessageLimit: 20,
+        retrievalKeywordMinimumScore: 0.1,
+        rerankMinimumEvidenceScore: 0.3,
+        rerankStrongEvidenceScore: 0.65,
         updatedAt: '2026-08-15T07:00:00.000Z',
       },
     }

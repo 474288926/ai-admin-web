@@ -27,8 +27,14 @@ export const systemConfigurationSchema = z.object({
       revision: nonnegativeInteger,
       aiDefaultModelId: z.string().min(1),
       ragPromptVersion: z.string().min(1),
+      aiMaxOutputTokens: z.number().int().min(1).max(32768),
+      aiContextMessageLimit: z.number().int().min(1).max(200),
+      retrievalKeywordMinimumScore: z.number().min(0).max(1),
+      rerankMinimumEvidenceScore: z.number().min(0).max(1),
+      rerankStrongEvidenceScore: z.number().min(0).max(1),
       updatedAt: z.iso.datetime(),
     })
+    .refine((value) => value.rerankStrongEvidenceScore > value.rerankMinimumEvidenceScore)
     .nullable(),
   runtime: z.object({
     applicationName: z.string().min(1),
@@ -63,20 +69,22 @@ export const systemConfigurationSchema = z.object({
     embeddingDimensions: nonnegativeInteger,
     embeddingBatchSize: nonnegativeInteger,
   }),
-  retrieval: z.object({
-    driver: z.string().min(1),
-    mode: z.string().min(1),
-    keywordCandidateMultiplier: nonnegativeInteger,
-    keywordMinimumScore: z.number().min(0).max(1),
-    rrfK: nonnegativeInteger,
-    queryRewriteAiEnabled: z.boolean(),
-    rerankEnabled: z.boolean(),
-    rerankCandidateMultiplier: nonnegativeInteger,
-    minimumEvidenceScore: z.number().min(0).max(1),
-    strongEvidenceScore: z.number().min(0).max(1),
-    requireCriticalExactTermMatch: z.boolean(),
-    answerabilityAiEnabled: z.boolean(),
-  }),
+  retrieval: z
+    .object({
+      driver: z.string().min(1),
+      mode: z.string().min(1),
+      keywordCandidateMultiplier: nonnegativeInteger,
+      keywordMinimumScore: z.number().min(0).max(1),
+      rrfK: nonnegativeInteger,
+      queryRewriteAiEnabled: z.boolean(),
+      rerankEnabled: z.boolean(),
+      rerankCandidateMultiplier: nonnegativeInteger,
+      minimumEvidenceScore: z.number().min(0).max(1),
+      strongEvidenceScore: z.number().min(0).max(1),
+      requireCriticalExactTermMatch: z.boolean(),
+      answerabilityAiEnabled: z.boolean(),
+    })
+    .refine((value) => value.strongEvidenceScore > value.minimumEvidenceScore),
   rag: z.object({
     promptVersion: z.string().min(1),
     structuredResponseEnabled: z.boolean(),
@@ -116,9 +124,14 @@ export const systemConfigurationSchema = z.object({
   }),
 })
 
-const configurationValueChangeSchema = z.object({
+const configurationStringValueChangeSchema = z.object({
   before: z.string(),
   after: z.string(),
+})
+
+const configurationNumberValueChangeSchema = z.object({
+  before: z.number().finite(),
+  after: z.number().finite(),
 })
 
 export const systemConfigurationHistorySchema = z.object({
@@ -142,8 +155,13 @@ export const systemConfigurationHistorySchema = z.object({
         }),
       ]),
       changes: z.object({
-        aiDefaultModelId: configurationValueChangeSchema.optional(),
-        ragPromptVersion: configurationValueChangeSchema.optional(),
+        aiDefaultModelId: configurationStringValueChangeSchema.optional(),
+        ragPromptVersion: configurationStringValueChangeSchema.optional(),
+        aiMaxOutputTokens: configurationNumberValueChangeSchema.optional(),
+        aiContextMessageLimit: configurationNumberValueChangeSchema.optional(),
+        retrievalKeywordMinimumScore: configurationNumberValueChangeSchema.optional(),
+        rerankMinimumEvidenceScore: configurationNumberValueChangeSchema.optional(),
+        rerankStrongEvidenceScore: configurationNumberValueChangeSchema.optional(),
       }),
     }),
   ),
