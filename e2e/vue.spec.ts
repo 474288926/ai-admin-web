@@ -216,8 +216,8 @@ test('模型选择器把选中的模型传给问答接口', async ({ page }) => 
           content: '请先检查设备电源和网络指示灯。',
           clientRequestId: null,
           parentMessageId: userMessageId,
-          provider: 'deepseek',
-          model: 'deepseek-e2e-model',
+          provider: 'qwen',
+          model: 'qwen-e2e-fallback-model',
         },
         replayed: false,
         modelSelection: {
@@ -228,6 +228,11 @@ test('模型选择器把选中的模型传给问答接口', async ({ page }) => 
           spent: 1,
           budget: 10,
           usageRatio: 0.1,
+        },
+        providerFailover: {
+          fromModelId: 'deepseek',
+          toModelId: 'qwen',
+          reason: 'timeout',
         },
       })
     }
@@ -266,6 +271,7 @@ test('模型选择器把选中的模型传给问答接口', async ({ page }) => 
       mode: 'standard',
       modelId: 'deepseek',
     })
+  await expect(page.getByText('DeepSeek发生响应超时，本次已自动切换为 千问')).toBeVisible()
 })
 
 test('模型用量页展示 Token、费用和预算进度', async ({ page }) => {
