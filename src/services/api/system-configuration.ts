@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import type {
+  RollbackSystemConfigurationInput,
   SystemConfigurationHistory,
   SystemConfigurationSnapshot,
   UpdateSystemConfigurationInput,
@@ -8,6 +9,7 @@ import type {
 import { apiRequest } from './client'
 
 const nonnegativeInteger = z.number().int().nonnegative()
+const positiveInteger = z.number().int().positive()
 
 export const systemConfigurationSchema = z.object({
   capturedAt: z.iso.datetime(),
@@ -132,6 +134,13 @@ export const systemConfigurationHistorySchema = z.object({
           email: z.email(),
         })
         .nullable(),
+      operation: z.discriminatedUnion('type', [
+        z.object({ type: z.literal('update') }),
+        z.object({
+          type: z.literal('rollback'),
+          targetRevision: positiveInteger,
+        }),
+      ]),
       changes: z.object({
         aiDefaultModelId: configurationValueChangeSchema.optional(),
         ragPromptVersion: configurationValueChangeSchema.optional(),
@@ -150,6 +159,16 @@ export async function getSystemConfigurationHistory(
 ): Promise<SystemConfigurationHistory> {
   const result = await apiRequest<unknown>(`/system/configuration/history?limit=${limit}`)
   return systemConfigurationHistorySchema.parse(result)
+}
+
+export async function rollbackSystemConfiguration(
+  input: RollbackSystemConfigurationInput,
+): Promise<SystemConfigurationSnapshot> {
+  const result = await apiRequest<unknown>('/system/configuration/rollback', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+  return systemConfigurationSchema.parse(result)
 }
 
 export async function updateSystemConfiguration(

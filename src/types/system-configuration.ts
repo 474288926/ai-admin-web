@@ -105,6 +105,11 @@ export interface UpdateSystemConfigurationInput {
   ragPromptVersion?: string
 }
 
+export interface RollbackSystemConfigurationInput {
+  revision: number
+  targetRevision: number
+}
+
 export interface SystemConfigurationHistoryValueChange {
   before: string
   after: string
@@ -120,6 +125,7 @@ export interface SystemConfigurationHistory {
       name: string | null
       email: string
     } | null
+    operation: { type: 'update' } | { type: 'rollback'; targetRevision: number }
     changes: {
       aiDefaultModelId?: SystemConfigurationHistoryValueChange
       ragPromptVersion?: SystemConfigurationHistoryValueChange
