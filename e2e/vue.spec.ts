@@ -151,6 +151,8 @@ test('企业管理员可以从统一入口新增成员', async ({ page }) => {
         canManageMembers: true,
         canManageUnits: true,
         canManageInvitations: true,
+        canTransferOwnership: true,
+        canLeaveOrganization: false,
       },
       memberships: [
         {
@@ -159,6 +161,7 @@ test('企业管理员可以从统一入口新增成员', async ({ page }) => {
           role: 'OWNER',
           status: 'ACTIVE',
           joinedAt: '2026-08-14T00:00:00.000Z',
+          sourceSystem: null,
           user: { email: mockSession.user.email, name: mockSession.user.name },
         },
       ],
@@ -179,6 +182,89 @@ test('企业管理员可以从统一入口新增成员', async ({ page }) => {
   await expect(page.getByRole('dialog', { name: '邀请新成员' })).toBeVisible()
 })
 
+test('企业所有者可以转移所有权并移除普通成员', async ({ page }) => {
+  await useMockSession(page)
+  const organization = mockOrganizations[0]
+  const nextOwnerMemberId = '10000000-0000-4000-8000-000000000013'
+  const removableMemberId = '10000000-0000-4000-8000-000000000014'
+  let transferredMemberId = ''
+  let removedMemberId = ''
+
+  await page.route(`**/api/v1/organizations/${organization.id}`, (route) =>
+    fulfillJson(route, {
+      ...organization,
+      capabilities: {
+        directoryAccess: 'FULL',
+        canManageMembers: true,
+        canManageUnits: true,
+        canManageInvitations: true,
+        canTransferOwnership: true,
+        canLeaveOrganization: false,
+      },
+      memberships: [
+        {
+          id: '10000000-0000-4000-8000-000000000012',
+          userId: mockSession.user.id,
+          role: 'OWNER',
+          status: 'ACTIVE',
+          joinedAt: '2026-08-14T00:00:00.000Z',
+          sourceSystem: null,
+          user: { email: mockSession.user.email, name: mockSession.user.name },
+        },
+        {
+          id: nextOwnerMemberId,
+          userId: '10000000-0000-4000-8000-000000000015',
+          role: 'ADMIN',
+          status: 'ACTIVE',
+          joinedAt: '2026-08-14T00:00:00.000Z',
+          sourceSystem: null,
+          user: { email: 'next-owner@example.com', name: '候选所有者' },
+        },
+        {
+          id: removableMemberId,
+          userId: '10000000-0000-4000-8000-000000000016',
+          role: 'MEMBER',
+          status: 'ACTIVE',
+          joinedAt: '2026-08-14T00:00:00.000Z',
+          sourceSystem: null,
+          user: { email: 'remove@example.com', name: '待移除成员' },
+        },
+      ],
+      departments: [],
+      groups: [],
+    }),
+  )
+  await page.route(`**/api/v1/organizations/${organization.id}/invitations`, (route) =>
+    fulfillJson(route, []),
+  )
+  await page.route(
+    `**/api/v1/organizations/${organization.id}/ownership-transfer`,
+    async (route) => {
+      transferredMemberId = (route.request().postDataJSON() as { memberId: string }).memberId
+      await route.fulfill({ status: 204 })
+    },
+  )
+  await page.route(`**/api/v1/organizations/${organization.id}/members/*`, async (route) => {
+    removedMemberId = route.request().url().split('/').at(-1) ?? ''
+    await route.fulfill({ status: 204 })
+  })
+
+  await page.goto('/organization')
+
+  const nextOwnerRow = page.getByRole('row', { name: /候选所有者/ })
+  await nextOwnerRow.getByRole('button', { name: '转移所有权' }).click()
+  await page.getByRole('button', { name: '确认转移' }).click()
+  await expect(page.getByText('企业所有权已转移')).toBeVisible()
+
+  const removableRow = page.getByRole('row', { name: /待移除成员/ })
+  await removableRow.getByRole('button', { name: '移除', exact: true }).click()
+  await page.getByRole('button', { name: '确认移除' }).click()
+  await expect(page.getByText('企业成员已移除')).toBeVisible()
+
+  expect(transferredMemberId).toBe(nextOwnerMemberId)
+  expect(removedMemberId).toBe(removableMemberId)
+})
+
 test('普通企业成员只能查看自己的企业身份', async ({ page }) => {
   const organization = { ...mockOrganizations[0], currentRole: 'MEMBER' }
   await useMockSession(page, { organizations: [organization] })
@@ -190,6 +276,8 @@ test('普通企业成员只能查看自己的企业身份', async ({ page }) => 
         canManageMembers: false,
         canManageUnits: false,
         canManageInvitations: false,
+        canTransferOwnership: false,
+        canLeaveOrganization: true,
       },
       memberships: [
         {
@@ -198,6 +286,7 @@ test('普通企业成员只能查看自己的企业身份', async ({ page }) => 
           role: 'MEMBER',
           status: 'ACTIVE',
           joinedAt: '2026-08-14T00:00:00.000Z',
+          sourceSystem: null,
           user: { email: mockSession.user.email, name: mockSession.user.name },
         },
       ],
@@ -211,6 +300,7 @@ test('普通企业成员只能查看自己的企业身份', async ({ page }) => 
   await expect(page.getByRole('heading', { name: '我的企业身份' })).toBeVisible()
   await expect(page.getByText(mockSession.user.email).first()).toBeVisible()
   await expect(page.getByText('当前仅显示你的企业成员信息')).toBeVisible()
+  await expect(page.getByRole('button', { name: '退出企业' })).toBeVisible()
   await expect(page.getByRole('button', { name: '新增成员' })).toHaveCount(0)
   await expect(page.getByRole('heading', { name: '部门' })).toHaveCount(0)
 })
@@ -245,6 +335,8 @@ test('单企业首次初始化账号可以创建企业', async ({ page }) => {
         canManageMembers: true,
         canManageUnits: true,
         canManageInvitations: true,
+        canTransferOwnership: true,
+        canLeaveOrganization: false,
       },
       memberships: [],
       departments: [],

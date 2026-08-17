@@ -43,6 +43,7 @@ const organizationMemberSchema = z.object({
   role: z.enum(['OWNER', 'ADMIN', 'KNOWLEDGE_ADMIN', 'MEMBER', 'SUPPORT']),
   status: z.enum(['INVITED', 'ACTIVE', 'SUSPENDED']),
   joinedAt: z.iso.datetime().nullable(),
+  sourceSystem: z.string().nullable(),
   user: z.object({ email: z.email(), name: z.string().nullable() }),
 })
 
@@ -66,6 +67,8 @@ const organizationDetailCapabilitiesSchema = z.object({
   canManageMembers: z.boolean(),
   canManageUnits: z.boolean(),
   canManageInvitations: z.boolean(),
+  canTransferOwnership: z.boolean(),
+  canLeaveOrganization: z.boolean(),
 })
 
 const organizationStructureSchema = organizationSummarySchema.extend({
@@ -75,7 +78,10 @@ const organizationStructureSchema = organizationSummarySchema.extend({
   groups: z.array(organizationGroupSchema),
 })
 
-const organizationMemberMutationSchema = organizationMemberSchema.omit({ user: true })
+const organizationMemberMutationSchema = organizationMemberSchema.omit({
+  user: true,
+  sourceSystem: true,
+})
 const assignableRoleSchema = z.enum(['ADMIN', 'KNOWLEDGE_ADMIN', 'MEMBER', 'SUPPORT'])
 const organizationInvitationSchema = z.object({
   id: z.uuid(),
@@ -142,6 +148,25 @@ export async function updateMember(
     body: JSON.stringify(input),
   })
   organizationMemberMutationSchema.parse(result)
+}
+
+export function transferOwnership(organizationId: string, memberId: string): Promise<void> {
+  return apiRequest<void>(`/organizations/${organizationId}/ownership-transfer`, {
+    method: 'POST',
+    body: JSON.stringify({ memberId }),
+  })
+}
+
+export function removeMember(organizationId: string, memberId: string): Promise<void> {
+  return apiRequest<void>(`/organizations/${organizationId}/members/${memberId}`, {
+    method: 'DELETE',
+  })
+}
+
+export function leaveOrganization(organizationId: string): Promise<void> {
+  return apiRequest<void>(`/organizations/${organizationId}/membership`, {
+    method: 'DELETE',
+  })
 }
 
 export async function createDepartment(
