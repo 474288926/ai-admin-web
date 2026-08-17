@@ -45,10 +45,22 @@ const mockSession = {
   },
 } as const
 
+const mockOrganizations = [
+  {
+    id: '10000000-0000-4000-8000-000000000011',
+    name: 'E2E 测试企业',
+    slug: 'e2e-organization',
+    currentRole: 'OWNER',
+    createdAt: '2026-08-14T00:00:00.000Z',
+    updatedAt: '2026-08-14T00:00:00.000Z',
+  },
+] as const
+
 async function useMockSession(page: Page): Promise<void> {
   await page.addInitScript((session) => {
     window.localStorage.setItem('knowledge-admin-session', JSON.stringify(session))
   }, mockSession)
+  await page.route('**/api/v1/organizations', (route) => fulfillJson(route, mockOrganizations))
 }
 
 function fulfillJson(route: Route, body: unknown, status = 200): Promise<void> {
@@ -443,6 +455,10 @@ test('模型选择器把选中的模型传给问答接口', async ({ page }) => 
           pricing: null,
         },
       ])
+    }
+
+    if (url.pathname === '/api/v1/organizations') {
+      return fulfillJson(route, mockOrganizations)
     }
 
     if (url.pathname === '/api/v1/knowledge-bases') {
