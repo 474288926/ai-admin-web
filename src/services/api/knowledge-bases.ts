@@ -70,6 +70,12 @@ const knowledgeBaseGrantsSchema = z.object({
 })
 
 const organizationStructureSchema = organizationSchema.extend({
+  capabilities: z.object({
+    directoryAccess: z.enum(['FULL', 'SELF']),
+    canManageMembers: z.boolean(),
+    canManageUnits: z.boolean(),
+    canManageInvitations: z.boolean(),
+  }),
   memberships: z.array(
     z.object({
       id: z.uuid(),

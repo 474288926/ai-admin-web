@@ -42,6 +42,13 @@ export interface OrganizationMember {
   user: { email: string; name: string | null }
 }
 
+export interface OrganizationDetailCapabilities {
+  directoryAccess: 'FULL' | 'SELF'
+  canManageMembers: boolean
+  canManageUnits: boolean
+  canManageInvitations: boolean
+}
+
 export interface OrganizationDepartment {
   id: string
   name: string
@@ -58,6 +65,7 @@ export interface OrganizationGroup {
 }
 
 export interface OrganizationStructure extends OrganizationSummary {
+  capabilities: OrganizationDetailCapabilities
   memberships: OrganizationMember[]
   departments: OrganizationDepartment[]
   groups: OrganizationGroup[]

@@ -99,6 +99,12 @@ describe('knowledge base api', () => {
             currentRole: 'ADMIN',
             createdAt: '2026-08-12T01:00:00.000Z',
             updatedAt: '2026-08-12T02:00:00.000Z',
+            capabilities: {
+              directoryAccess: 'FULL',
+              canManageMembers: true,
+              canManageUnits: true,
+              canManageInvitations: true,
+            },
             memberships: [
               {
                 id: '78e580e7-0903-422c-8a78-bba7fab56c97',

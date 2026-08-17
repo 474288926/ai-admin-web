@@ -146,6 +146,12 @@ test('企业管理员可以从统一入口新增成员', async ({ page }) => {
   await page.route(`**/api/v1/organizations/${organization.id}`, (route) =>
     fulfillJson(route, {
       ...organization,
+      capabilities: {
+        directoryAccess: 'FULL',
+        canManageMembers: true,
+        canManageUnits: true,
+        canManageInvitations: true,
+      },
       memberships: [
         {
           id: '10000000-0000-4000-8000-000000000012',
@@ -173,6 +179,42 @@ test('企业管理员可以从统一入口新增成员', async ({ page }) => {
   await expect(page.getByRole('dialog', { name: '邀请新成员' })).toBeVisible()
 })
 
+test('普通企业成员只能查看自己的企业身份', async ({ page }) => {
+  const organization = { ...mockOrganizations[0], currentRole: 'MEMBER' }
+  await useMockSession(page, { organizations: [organization] })
+  await page.route(`**/api/v1/organizations/${organization.id}`, (route) =>
+    fulfillJson(route, {
+      ...organization,
+      capabilities: {
+        directoryAccess: 'SELF',
+        canManageMembers: false,
+        canManageUnits: false,
+        canManageInvitations: false,
+      },
+      memberships: [
+        {
+          id: '10000000-0000-4000-8000-000000000012',
+          userId: mockSession.user.id,
+          role: 'MEMBER',
+          status: 'ACTIVE',
+          joinedAt: '2026-08-14T00:00:00.000Z',
+          user: { email: mockSession.user.email, name: mockSession.user.name },
+        },
+      ],
+      departments: [],
+      groups: [],
+    }),
+  )
+
+  await page.goto('/organization')
+
+  await expect(page.getByRole('heading', { name: '我的企业身份' })).toBeVisible()
+  await expect(page.getByText(mockSession.user.email).first()).toBeVisible()
+  await expect(page.getByText('当前仅显示你的企业成员信息')).toBeVisible()
+  await expect(page.getByRole('button', { name: '新增成员' })).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: '部门' })).toHaveCount(0)
+})
+
 test('单企业首次初始化账号可以创建企业', async ({ page }) => {
   let organizationCreated = false
   let createBody: Record<string, unknown> | null = null
@@ -198,6 +240,12 @@ test('单企业首次初始化账号可以创建企业', async ({ page }) => {
   await page.route(`**/api/v1/organizations/${createdOrganization.id}`, (route) =>
     fulfillJson(route, {
       ...createdOrganization,
+      capabilities: {
+        directoryAccess: 'FULL',
+        canManageMembers: true,
+        canManageUnits: true,
+        canManageInvitations: true,
+      },
       memberships: [],
       departments: [],
       groups: [],
