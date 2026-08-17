@@ -2,6 +2,7 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import {
+  ArrowDown,
   CopyDocument,
   Delete,
   Edit,
@@ -292,6 +293,14 @@ function openInviteMember(invitation?: OrganizationInvitation): void {
   generatedInvitationLink.value = ''
   inviteFormRef.value?.clearValidate()
   inviteDialogVisible.value = true
+}
+
+function handleAddMemberCommand(command: 'invite' | 'existing'): void {
+  if (command === 'existing') {
+    openAddMember()
+    return
+  }
+  openInviteMember()
 }
 
 async function refreshOrganization(): Promise<void> {
@@ -617,12 +626,25 @@ async function deleteUnit(kind: OrganizationUnitKind, id: string, name: string):
                   @click="refreshOrganization"
                 />
               </el-tooltip>
-              <template v-if="canManage">
-                <el-button :icon="Plus" @click="openAddMember">添加已有账号</el-button>
-                <el-button type="primary" :icon="Message" @click="openInviteMember()">
-                  邀请新成员
+              <el-dropdown v-if="canManage" trigger="click" @command="handleAddMemberCommand">
+                <el-button type="primary" :icon="Plus">
+                  新增成员
+                  <el-icon class="member-action-arrow"><ArrowDown /></el-icon>
                 </el-button>
-              </template>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="invite" :icon="Message">
+                      邀请新成员
+                    </el-dropdown-item>
+                    <el-dropdown-item command="existing" :icon="User">
+                      添加已有账号
+                    </el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+              <el-tooltip v-else content="只有企业所有者或管理员可以新增成员" placement="top">
+                <el-tag type="info" effect="plain">成员管理只读</el-tag>
+              </el-tooltip>
             </div>
           </header>
 
@@ -1260,6 +1282,10 @@ async function deleteUnit(kind: OrganizationUnitKind, id: string, name: string):
 
 .section-actions .el-input {
   width: 230px;
+}
+
+.member-action-arrow {
+  margin-left: 6px;
 }
 
 .member-cell {
