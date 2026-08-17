@@ -3,6 +3,7 @@ import type { OrganizationRole } from '@/types/organization'
 export type AppCapability =
   | 'operations:view'
   | 'organization:manage'
+  | 'organization:audit'
   | 'assistant:use'
   | 'knowledge:view'
   | 'knowledge:manage'
@@ -12,6 +13,7 @@ export type AppCapability =
 const CAPABILITY_ROLES: Record<AppCapability, ReadonlySet<OrganizationRole>> = {
   'operations:view': new Set(['OWNER', 'ADMIN', 'KNOWLEDGE_ADMIN']),
   'organization:manage': new Set(['OWNER', 'ADMIN']),
+  'organization:audit': new Set(['OWNER', 'ADMIN']),
   'assistant:use': new Set(['OWNER', 'ADMIN', 'KNOWLEDGE_ADMIN', 'SUPPORT']),
   'knowledge:view': new Set(['OWNER', 'ADMIN', 'KNOWLEDGE_ADMIN', 'SUPPORT']),
   'knowledge:manage': new Set(['OWNER', 'ADMIN', 'KNOWLEDGE_ADMIN']),
