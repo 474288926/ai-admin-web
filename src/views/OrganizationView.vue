@@ -219,18 +219,16 @@ const saveUnitMembersMutation = useMutation({
 })
 
 const organization = computed(() => organizationQuery.data.value)
-const currentMembership = computed(() =>
-  organization.value?.memberships.find((item) => item.userId === authStore.user?.id),
-)
-const canManage = computed(
-  () =>
-    currentMembership.value?.status === 'ACTIVE' &&
-    ['OWNER', 'ADMIN'].includes(currentMembership.value.role),
+const hasFullDirectory = computed(() => organization.value?.capabilities.directoryAccess === 'FULL')
+const canManageMembers = computed(() => organization.value?.capabilities.canManageMembers === true)
+const canManageUnits = computed(() => organization.value?.capabilities.canManageUnits === true)
+const canManageInvitations = computed(
+  () => organization.value?.capabilities.canManageInvitations === true,
 )
 const invitationsQuery = useQuery({
   queryKey: computed(() => ['organization-invitations', selectedOrganizationId.value]),
   queryFn: () => organizationApi.listInvitations(selectedOrganizationId.value),
-  enabled: computed(() => Boolean(selectedOrganizationId.value) && canManage.value),
+  enabled: computed(() => Boolean(selectedOrganizationId.value) && canManageInvitations.value),
 })
 const invitations = computed(() => invitationsQuery.data.value ?? [])
 const filteredMembers = computed(() => {
@@ -689,30 +687,45 @@ async function deleteUnit(kind: OrganizationUnitKind, id: string, name: string):
             <small>{{ organization.slug }}</small>
           </div>
           <div>
-            <span>有效成员</span>
+            <span>{{ hasFullDirectory ? '有效成员' : '我的成员状态' }}</span>
             <strong>{{ activeMemberCount }}</strong>
-            <small>共 {{ organization.memberships.length }} 个成员记录</small>
+            <small>
+              {{
+                hasFullDirectory
+                  ? `共 ${organization.memberships.length} 个成员记录`
+                  : roleLabel(organization.currentRole)
+              }}
+            </small>
           </div>
-          <div>
+          <div v-if="hasFullDirectory">
             <span>部门</span>
             <strong>{{ organization.departments.length }}</strong>
             <small>企业组织架构</small>
           </div>
-          <div>
+          <div v-if="hasFullDirectory">
             <span>用户组</span>
             <strong>{{ organization.groups.length }}</strong>
             <small>跨部门权限集合</small>
           </div>
         </section>
 
+        <el-alert
+          v-if="!hasFullDirectory"
+          type="info"
+          title="当前仅显示你的企业成员信息"
+          :closable="false"
+          show-icon
+        />
+
         <section class="organization-section members-section">
           <header class="section-header">
             <div>
-              <h3>人员管理</h3>
-              <p>成员角色决定其在当前企业内的管理范围。</p>
+              <h3>{{ hasFullDirectory ? '人员管理' : '我的企业身份' }}</h3>
+              <p v-if="hasFullDirectory">成员角色决定其在当前企业内的管理范围。</p>
             </div>
             <div class="section-actions">
               <el-input
+                v-if="hasFullDirectory"
                 v-model="search"
                 :prefix-icon="Search"
                 clearable
@@ -726,7 +739,11 @@ async function deleteUnit(kind: OrganizationUnitKind, id: string, name: string):
                   @click="refreshOrganization"
                 />
               </el-tooltip>
-              <el-dropdown v-if="canManage" trigger="click" @command="handleAddMemberCommand">
+              <el-dropdown
+                v-if="canManageMembers"
+                trigger="click"
+                @command="handleAddMemberCommand"
+              >
                 <el-button type="primary" :icon="Plus">
                   新增成员
                   <el-icon class="member-action-arrow"><ArrowDown /></el-icon>
@@ -742,8 +759,14 @@ async function deleteUnit(kind: OrganizationUnitKind, id: string, name: string):
                   </el-dropdown-menu>
                 </template>
               </el-dropdown>
-              <el-tooltip v-else content="只有企业所有者或管理员可以新增成员" placement="top">
-                <el-tag type="info" effect="plain">成员管理只读</el-tag>
+              <el-tooltip
+                v-else
+                :content="hasFullDirectory ? '当前角色仅可查看企业目录' : '企业目录仅显示本人信息'"
+                placement="top"
+              >
+                <el-tag type="info" effect="plain">
+                  {{ hasFullDirectory ? '企业目录只读' : '仅本人可见' }}
+                </el-tag>
               </el-tooltip>
             </div>
           </header>
@@ -766,7 +789,7 @@ async function deleteUnit(kind: OrganizationUnitKind, id: string, name: string):
               <template #default="{ row }">
                 <el-tag v-if="row.role === 'OWNER'" type="warning">企业所有者</el-tag>
                 <el-select
-                  v-else-if="canManage"
+                  v-else-if="canManageMembers"
                   :model-value="row.role"
                   :disabled="editingMemberId === row.id"
                   aria-label="企业角色"
@@ -785,7 +808,9 @@ async function deleteUnit(kind: OrganizationUnitKind, id: string, name: string):
             <el-table-column label="状态" width="150">
               <template #default="{ row }">
                 <el-select
-                  v-if="canManage && row.role !== 'OWNER' && row.userId !== authStore.user?.id"
+                  v-if="
+                    canManageMembers && row.role !== 'OWNER' && row.userId !== authStore.user?.id
+                  "
                   :model-value="row.status === 'SUSPENDED' ? 'SUSPENDED' : 'ACTIVE'"
                   :disabled="editingMemberId === row.id"
                   aria-label="成员状态"
@@ -819,7 +844,7 @@ async function deleteUnit(kind: OrganizationUnitKind, id: string, name: string):
                   <dd>
                     <el-tag v-if="member.role === 'OWNER'" type="warning">企业所有者</el-tag>
                     <el-select
-                      v-else-if="canManage"
+                      v-else-if="canManageMembers"
                       :model-value="member.role"
                       :disabled="editingMemberId === member.id"
                       aria-label="企业角色"
@@ -840,7 +865,9 @@ async function deleteUnit(kind: OrganizationUnitKind, id: string, name: string):
                   <dd>
                     <el-select
                       v-if="
-                        canManage && member.role !== 'OWNER' && member.userId !== authStore.user?.id
+                        canManageMembers &&
+                        member.role !== 'OWNER' &&
+                        member.userId !== authStore.user?.id
                       "
                       :model-value="member.status === 'SUSPENDED' ? 'SUSPENDED' : 'ACTIVE'"
                       :disabled="editingMemberId === member.id"
@@ -865,7 +892,7 @@ async function deleteUnit(kind: OrganizationUnitKind, id: string, name: string):
           </div>
         </section>
 
-        <section v-if="canManage" class="organization-section invitation-section">
+        <section v-if="canManageInvitations" class="organization-section invitation-section">
           <header class="section-header">
             <div>
               <h3>企业邀请</h3>
@@ -924,14 +951,14 @@ async function deleteUnit(kind: OrganizationUnitKind, id: string, name: string):
           </ul>
         </section>
 
-        <div class="structure-grid">
+        <div v-if="hasFullDirectory" class="structure-grid">
           <section class="organization-section">
             <header class="section-header compact">
               <div>
                 <h3>部门</h3>
                 <p>当前企业的层级组织单元。</p>
               </div>
-              <el-tooltip v-if="canManage" content="创建部门" placement="top">
+              <el-tooltip v-if="canManageUnits" content="创建部门" placement="top">
                 <el-button
                   :icon="Plus"
                   circle
@@ -955,7 +982,7 @@ async function deleteUnit(kind: OrganizationUnitKind, id: string, name: string):
                 <div class="structure-actions">
                   <el-tag v-if="department.sourceSystem" type="info" size="small">目录同步</el-tag>
                   <span class="member-count">{{ department.memberIds.length }} 人</span>
-                  <template v-if="canManage && !department.sourceSystem">
+                  <template v-if="canManageUnits && !department.sourceSystem">
                     <el-tooltip content="分配部门成员" placement="top">
                       <el-button
                         :icon="User"
@@ -999,7 +1026,7 @@ async function deleteUnit(kind: OrganizationUnitKind, id: string, name: string):
                 <h3>用户组</h3>
                 <p>用于跨部门组织知识访问范围。</p>
               </div>
-              <el-tooltip v-if="canManage" content="创建用户组" placement="top">
+              <el-tooltip v-if="canManageUnits" content="创建用户组" placement="top">
                 <el-button :icon="Plus" circle aria-label="创建用户组" @click="openGroupDialog()" />
               </el-tooltip>
             </header>
@@ -1017,7 +1044,7 @@ async function deleteUnit(kind: OrganizationUnitKind, id: string, name: string):
                 </div>
                 <div class="structure-actions">
                   <span class="member-count">{{ group.memberIds.length }} 人</span>
-                  <template v-if="canManage">
+                  <template v-if="canManageUnits">
                     <el-tooltip content="分配用户组成员" placement="top">
                       <el-button
                         :icon="User"

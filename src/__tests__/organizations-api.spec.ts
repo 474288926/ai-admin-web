@@ -93,6 +93,12 @@ describe('organizations api', () => {
         new Response(
           JSON.stringify({
             ...summary,
+            capabilities: {
+              directoryAccess: 'FULL',
+              canManageMembers: true,
+              canManageUnits: true,
+              canManageInvitations: true,
+            },
             memberships: [
               {
                 id: memberId,
@@ -129,9 +135,52 @@ describe('organizations api', () => {
     expect((await listOrganizations())[0]?.name).toBe('示例企业')
     const structure = await getOrganization(organizationId)
     expect(structure.memberships[0]?.role).toBe('ADMIN')
+    expect(structure.capabilities.canManageMembers).toBe(true)
     expect(structure.departments[0]?.memberIds).toEqual([memberId])
     expect(structure.groups[0]?.memberIds).toEqual([memberId])
     expect(fetchMock.mock.calls[1]?.[0]).toContain(`/organizations/${organizationId}`)
+  })
+
+  it('parses a self-only organization response for regular members', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: organizationId,
+          name: '示例企业',
+          slug: 'example-company',
+          currentRole: 'MEMBER',
+          createdAt,
+          updatedAt: createdAt,
+          capabilities: {
+            directoryAccess: 'SELF',
+            canManageMembers: false,
+            canManageUnits: false,
+            canManageInvitations: false,
+          },
+          memberships: [
+            {
+              id: memberId,
+              userId,
+              role: 'MEMBER',
+              status: 'ACTIVE',
+              joinedAt: createdAt,
+              user: { email: 'member@example.com', name: '成员' },
+            },
+          ],
+          departments: [],
+          groups: [],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const structure = await getOrganization(organizationId)
+
+    expect(structure.capabilities.directoryAccess).toBe('SELF')
+    expect(structure.memberships).toHaveLength(1)
+    expect(structure.departments).toEqual([])
+    expect(structure.groups).toEqual([])
   })
 
   it('adds a registered member by email and updates membership fields', async () => {

@@ -61,7 +61,15 @@ const organizationGroupSchema = z.object({
   memberIds: z.array(z.uuid()),
 })
 
+const organizationDetailCapabilitiesSchema = z.object({
+  directoryAccess: z.enum(['FULL', 'SELF']),
+  canManageMembers: z.boolean(),
+  canManageUnits: z.boolean(),
+  canManageInvitations: z.boolean(),
+})
+
 const organizationStructureSchema = organizationSummarySchema.extend({
+  capabilities: organizationDetailCapabilitiesSchema,
   memberships: z.array(organizationMemberSchema),
   departments: z.array(organizationDepartmentSchema),
   groups: z.array(organizationGroupSchema),
