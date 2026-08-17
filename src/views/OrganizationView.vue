@@ -11,6 +11,7 @@ import {
   Plus,
   Refresh,
   Search,
+  SwitchButton,
   User,
   UserFilled,
 } from '@element-plus/icons-vue'
@@ -60,6 +61,7 @@ const groupDialogVisible = ref(false)
 const unitMembersDialogVisible = ref(false)
 const generatedInvitationLink = ref('')
 const editingMemberId = ref<string | null>(null)
+const lifecycleMemberId = ref<string | null>(null)
 const editingDepartmentId = ref<string | null>(null)
 const editingGroupId = ref<string | null>(null)
 const activeUnit = ref<EditableOrganizationUnit | null>(null)
@@ -161,6 +163,17 @@ const updateMemberMutation = useMutation({
     input: { role?: Exclude<OrganizationRole, 'OWNER'>; status?: OrganizationMemberStatus }
   }) => organizationApi.updateMember(selectedOrganizationId.value, memberId, input),
 })
+const transferOwnershipMutation = useMutation({
+  mutationFn: (memberId: string) =>
+    organizationApi.transferOwnership(selectedOrganizationId.value, memberId),
+})
+const removeMemberMutation = useMutation({
+  mutationFn: (memberId: string) =>
+    organizationApi.removeMember(selectedOrganizationId.value, memberId),
+})
+const leaveOrganizationMutation = useMutation({
+  mutationFn: () => organizationApi.leaveOrganization(selectedOrganizationId.value),
+})
 const createInvitationMutation = useMutation({
   mutationFn: (input: CreateOrganizationInvitationInput) =>
     organizationApi.createInvitation(selectedOrganizationId.value, input),
@@ -224,6 +237,12 @@ const canManageMembers = computed(() => organization.value?.capabilities.canMana
 const canManageUnits = computed(() => organization.value?.capabilities.canManageUnits === true)
 const canManageInvitations = computed(
   () => organization.value?.capabilities.canManageInvitations === true,
+)
+const canTransferOwnership = computed(
+  () => organization.value?.capabilities.canTransferOwnership === true,
+)
+const canLeaveOrganization = computed(
+  () => organization.value?.capabilities.canLeaveOrganization === true,
 )
 const invitationsQuery = useQuery({
   queryKey: computed(() => ['organization-invitations', selectedOrganizationId.value]),
@@ -499,6 +518,72 @@ async function updateStatus(row: unknown, value: unknown): Promise<void> {
   }
 }
 
+async function transferOwnership(row: unknown): Promise<void> {
+  const member = row as OrganizationMember
+  lifecycleMemberId.value = member.id
+  try {
+    await ElMessageBox.confirm(
+      `转移后，${memberOptionLabel(member)} 将成为企业所有者，你将变为企业管理员。`,
+      '转移企业所有权',
+      { confirmButtonText: '确认转移', cancelButtonText: '取消', type: 'warning' },
+    )
+    await transferOwnershipMutation.mutateAsync(member.id)
+    await Promise.all([
+      invalidateOrganization(),
+      queryClient.invalidateQueries({ queryKey: ['organizations'] }),
+      authStore.ensureAccessProfile(true),
+    ])
+    ElMessage.success('企业所有权已转移')
+  } catch (error) {
+    if (error === 'cancel' || error === 'close') return
+    ElMessage.error(getErrorMessage(error))
+  } finally {
+    lifecycleMemberId.value = null
+  }
+}
+
+async function removeMember(row: unknown): Promise<void> {
+  const member = row as OrganizationMember
+  lifecycleMemberId.value = member.id
+  try {
+    await ElMessageBox.confirm(
+      `移除后，${memberOptionLabel(member)} 将失去当前企业及其授权资源的访问权限。`,
+      '移除企业成员',
+      { confirmButtonText: '确认移除', cancelButtonText: '取消', type: 'warning' },
+    )
+    await removeMemberMutation.mutateAsync(member.id)
+    await invalidateOrganization()
+    ElMessage.success('企业成员已移除')
+  } catch (error) {
+    if (error === 'cancel' || error === 'close') return
+    ElMessage.error(getErrorMessage(error))
+  } finally {
+    lifecycleMemberId.value = null
+  }
+}
+
+async function leaveOrganization(): Promise<void> {
+  const organizationId = selectedOrganizationId.value
+  try {
+    await ElMessageBox.confirm('退出后，你将失去当前企业及其授权资源的访问权限。', '退出企业', {
+      confirmButtonText: '确认退出',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+    await leaveOrganizationMutation.mutateAsync()
+    selectedOrganizationId.value = ''
+    queryClient.removeQueries({ queryKey: ['organization', organizationId] })
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['organizations'] }),
+      authStore.ensureAccessProfile(true),
+    ])
+    ElMessage.success('已退出企业')
+  } catch (error) {
+    if (error === 'cancel' || error === 'close') return
+    ElMessage.error(getErrorMessage(error))
+  }
+}
+
 function openDepartmentDialog(department?: OrganizationDepartment): void {
   editingDepartmentId.value = department?.id ?? null
   departmentForm.name = department?.name ?? ''
@@ -739,6 +824,17 @@ async function deleteUnit(kind: OrganizationUnitKind, id: string, name: string):
                   @click="refreshOrganization"
                 />
               </el-tooltip>
+              <el-tooltip v-if="canLeaveOrganization" content="退出当前企业" placement="top">
+                <el-button
+                  :icon="SwitchButton"
+                  type="danger"
+                  plain
+                  :loading="leaveOrganizationMutation.isPending.value"
+                  @click="leaveOrganization"
+                >
+                  退出企业
+                </el-button>
+              </el-tooltip>
               <el-dropdown
                 v-if="canManageMembers"
                 trigger="click"
@@ -781,6 +877,7 @@ async function deleteUnit(kind: OrganizationUnitKind, id: string, name: string):
                   <div>
                     <strong>{{ row.user.name || row.user.email }}</strong>
                     <span>{{ row.user.name ? row.user.email : '未设置姓名' }}</span>
+                    <el-tag v-if="row.sourceSystem" type="info" size="small">目录同步</el-tag>
                   </div>
                 </div>
               </template>
@@ -789,7 +886,7 @@ async function deleteUnit(kind: OrganizationUnitKind, id: string, name: string):
               <template #default="{ row }">
                 <el-tag v-if="row.role === 'OWNER'" type="warning">企业所有者</el-tag>
                 <el-select
-                  v-else-if="canManageMembers"
+                  v-else-if="canManageMembers && !row.sourceSystem"
                   :model-value="row.role"
                   :disabled="editingMemberId === row.id"
                   aria-label="企业角色"
@@ -809,7 +906,10 @@ async function deleteUnit(kind: OrganizationUnitKind, id: string, name: string):
               <template #default="{ row }">
                 <el-select
                   v-if="
-                    canManageMembers && row.role !== 'OWNER' && row.userId !== authStore.user?.id
+                    canManageMembers &&
+                    !row.sourceSystem &&
+                    row.role !== 'OWNER' &&
+                    row.userId !== authStore.user?.id
                   "
                   :model-value="row.status === 'SUSPENDED' ? 'SUSPENDED' : 'ACTIVE'"
                   :disabled="editingMemberId === row.id"
@@ -825,6 +925,32 @@ async function deleteUnit(kind: OrganizationUnitKind, id: string, name: string):
             <el-table-column label="加入日期" width="130">
               <template #default="{ row }">{{ formatDate(row.joinedAt) }}</template>
             </el-table-column>
+            <el-table-column v-if="canManageMembers" label="操作" width="190" fixed="right">
+              <template #default="{ row }">
+                <el-button
+                  v-if="canTransferOwnership && row.role !== 'OWNER' && row.status === 'ACTIVE'"
+                  link
+                  type="primary"
+                  :icon="SwitchButton"
+                  :loading="lifecycleMemberId === row.id"
+                  @click="transferOwnership(row)"
+                >
+                  转移所有权
+                </el-button>
+                <el-button
+                  v-if="
+                    row.role !== 'OWNER' && row.userId !== authStore.user?.id && !row.sourceSystem
+                  "
+                  link
+                  type="danger"
+                  :icon="Delete"
+                  :loading="lifecycleMemberId === row.id"
+                  @click="removeMember(row)"
+                >
+                  移除
+                </el-button>
+              </template>
+            </el-table-column>
           </el-table>
 
           <div class="member-mobile-list">
@@ -836,6 +962,7 @@ async function deleteUnit(kind: OrganizationUnitKind, id: string, name: string):
                 <div>
                   <strong>{{ member.user.name || member.user.email }}</strong>
                   <span>{{ member.user.email }}</span>
+                  <el-tag v-if="member.sourceSystem" type="info" size="small">目录同步</el-tag>
                 </div>
               </div>
               <dl>
@@ -844,7 +971,7 @@ async function deleteUnit(kind: OrganizationUnitKind, id: string, name: string):
                   <dd>
                     <el-tag v-if="member.role === 'OWNER'" type="warning">企业所有者</el-tag>
                     <el-select
-                      v-else-if="canManageMembers"
+                      v-else-if="canManageMembers && !member.sourceSystem"
                       :model-value="member.role"
                       :disabled="editingMemberId === member.id"
                       aria-label="企业角色"
@@ -866,6 +993,7 @@ async function deleteUnit(kind: OrganizationUnitKind, id: string, name: string):
                     <el-select
                       v-if="
                         canManageMembers &&
+                        !member.sourceSystem &&
                         member.role !== 'OWNER' &&
                         member.userId !== authStore.user?.id
                       "
@@ -887,6 +1015,43 @@ async function deleteUnit(kind: OrganizationUnitKind, id: string, name: string):
                   <dd>{{ formatDate(member.joinedAt) }}</dd>
                 </div>
               </dl>
+              <div
+                v-if="
+                  canManageMembers &&
+                  (canTransferOwnership ||
+                    (member.role !== 'OWNER' &&
+                      member.userId !== authStore.user?.id &&
+                      !member.sourceSystem))
+                "
+                class="member-lifecycle-actions"
+              >
+                <el-button
+                  v-if="
+                    canTransferOwnership && member.role !== 'OWNER' && member.status === 'ACTIVE'
+                  "
+                  link
+                  type="primary"
+                  :icon="SwitchButton"
+                  :loading="lifecycleMemberId === member.id"
+                  @click="transferOwnership(member)"
+                >
+                  转移所有权
+                </el-button>
+                <el-button
+                  v-if="
+                    member.role !== 'OWNER' &&
+                    member.userId !== authStore.user?.id &&
+                    !member.sourceSystem
+                  "
+                  link
+                  type="danger"
+                  :icon="Delete"
+                  :loading="lifecycleMemberId === member.id"
+                  @click="removeMember(member)"
+                >
+                  移除成员
+                </el-button>
+              </div>
             </div>
             <el-empty v-if="filteredMembers.length === 0" description="没有符合条件的企业成员" />
           </div>
@@ -1492,6 +1657,12 @@ async function deleteUnit(kind: OrganizationUnitKind, id: string, name: string):
 
 .member-mobile-list {
   display: none;
+}
+
+.member-lifecycle-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .invitation-list {

@@ -104,6 +104,8 @@ describe('knowledge base api', () => {
               canManageMembers: true,
               canManageUnits: true,
               canManageInvitations: true,
+              canTransferOwnership: false,
+              canLeaveOrganization: true,
             },
             memberships: [
               {
@@ -112,6 +114,7 @@ describe('knowledge base api', () => {
                 role: 'MEMBER',
                 status: 'ACTIVE',
                 joinedAt: '2026-08-12T01:30:00.000Z',
+                sourceSystem: null,
                 user: { email: 'member@example.com', name: '成员' },
               },
             ],

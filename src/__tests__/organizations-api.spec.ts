@@ -11,17 +11,20 @@ import {
   createOrganization,
   getOrganizationCapabilities,
   getOrganization,
+  leaveOrganization,
   listInvitations,
   listOrganizations,
   previewInvitation,
   removeDepartmentMember,
   removeGroupMember,
+  removeMember,
   revokeInvitation,
   deleteDepartment,
   deleteGroup,
   updateDepartment,
   updateGroup,
   updateMember,
+  transferOwnership,
 } from '@/services/api/organizations'
 
 const organizationId = '40f10640-86fe-4217-8ad9-fc39c6f80963'
@@ -98,6 +101,8 @@ describe('organizations api', () => {
               canManageMembers: true,
               canManageUnits: true,
               canManageInvitations: true,
+              canTransferOwnership: false,
+              canLeaveOrganization: true,
             },
             memberships: [
               {
@@ -106,6 +111,7 @@ describe('organizations api', () => {
                 role: 'ADMIN',
                 status: 'ACTIVE',
                 joinedAt: createdAt,
+                sourceSystem: null,
                 user: { email: 'admin@example.com', name: '管理员' },
               },
             ],
@@ -156,6 +162,8 @@ describe('organizations api', () => {
             canManageMembers: false,
             canManageUnits: false,
             canManageInvitations: false,
+            canTransferOwnership: false,
+            canLeaveOrganization: true,
           },
           memberships: [
             {
@@ -164,6 +172,7 @@ describe('organizations api', () => {
               role: 'MEMBER',
               status: 'ACTIVE',
               joinedAt: createdAt,
+              sourceSystem: null,
               user: { email: 'member@example.com', name: '成员' },
             },
           ],
@@ -224,6 +233,29 @@ describe('organizations api', () => {
       `/organizations/${organizationId}/members/${memberId}`,
     )
     expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({ method: 'PATCH' })
+  })
+
+  it('transfers ownership, removes a member and leaves an organization', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await transferOwnership(organizationId, memberId)
+    await removeMember(organizationId, memberId)
+    await leaveOrganization(organizationId)
+
+    expect(fetchMock.mock.calls[0]?.[0]).toContain(
+      `/organizations/${organizationId}/ownership-transfer`,
+    )
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+      method: 'POST',
+      body: JSON.stringify({ memberId }),
+    })
+    expect(fetchMock.mock.calls[1]?.[0]).toContain(
+      `/organizations/${organizationId}/members/${memberId}`,
+    )
+    expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({ method: 'DELETE' })
+    expect(fetchMock.mock.calls[2]?.[0]).toContain(`/organizations/${organizationId}/membership`)
+    expect(fetchMock.mock.calls[2]?.[1]).toMatchObject({ method: 'DELETE' })
   })
 
   it('manages invitations and accepts a public invitation', async () => {

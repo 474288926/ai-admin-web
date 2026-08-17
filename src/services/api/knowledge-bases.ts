@@ -75,6 +75,8 @@ const organizationStructureSchema = organizationSchema.extend({
     canManageMembers: z.boolean(),
     canManageUnits: z.boolean(),
     canManageInvitations: z.boolean(),
+    canTransferOwnership: z.boolean(),
+    canLeaveOrganization: z.boolean(),
   }),
   memberships: z.array(
     z.object({
@@ -83,6 +85,7 @@ const organizationStructureSchema = organizationSchema.extend({
       role: z.enum(['OWNER', 'ADMIN', 'KNOWLEDGE_ADMIN', 'MEMBER', 'SUPPORT']),
       status: z.enum(['INVITED', 'ACTIVE', 'SUSPENDED']),
       joinedAt: z.iso.datetime().nullable(),
+      sourceSystem: z.string().nullable(),
       user: z.object({ email: z.email(), name: z.string().nullable() }),
     }),
   ),

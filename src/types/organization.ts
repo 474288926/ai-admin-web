@@ -39,6 +39,7 @@ export interface OrganizationMember {
   role: OrganizationRole
   status: OrganizationMemberStatus
   joinedAt: string | null
+  sourceSystem: string | null
   user: { email: string; name: string | null }
 }
 
@@ -47,6 +48,8 @@ export interface OrganizationDetailCapabilities {
   canManageMembers: boolean
   canManageUnits: boolean
   canManageInvitations: boolean
+  canTransferOwnership: boolean
+  canLeaveOrganization: boolean
 }
 
 export interface OrganizationDepartment {
