@@ -75,7 +75,6 @@ const routes: RouteRecordRaw[] = [
         meta: {
           title: '企业管理',
           description: '管理企业成员、角色与组织结构。',
-          capability: 'organization:manage',
         },
       },
       {

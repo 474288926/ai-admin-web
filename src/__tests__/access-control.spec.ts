@@ -37,7 +37,7 @@ describe('role access control', () => {
     expect(defaultAuthenticatedPath(['ADMIN'])).toBe('/dashboard')
     expect(defaultAuthenticatedPath(['SUPPORT'])).toBe('/assistant')
     expect(defaultAuthenticatedPath(['MEMBER'])).toBe('/ask')
-    expect(defaultAuthenticatedPath([])).toBe('/ask')
+    expect(defaultAuthenticatedPath([])).toBe('/organization')
   })
 
   it('uses the highest role across multiple organizations', () => {

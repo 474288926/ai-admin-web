@@ -42,7 +42,6 @@ const menuItems: Array<{
     path: '/organization',
     label: '企业管理',
     icon: OfficeBuilding,
-    capability: 'organization:manage',
   },
   { path: '/assistant', label: '知识辅助', icon: ChatDotRound, capability: 'assistant:use' },
   {

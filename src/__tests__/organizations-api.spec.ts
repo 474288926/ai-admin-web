@@ -8,6 +8,8 @@ import {
   createDepartment,
   createGroup,
   createInvitation,
+  createOrganization,
+  getOrganizationCapabilities,
   getOrganization,
   listInvitations,
   listOrganizations,
@@ -31,6 +33,45 @@ const token = 'a'.repeat(43)
 afterEach(() => vi.unstubAllGlobals())
 
 describe('organizations api', () => {
+  it('loads organization capabilities and creates an organization', async () => {
+    const created = {
+      id: organizationId,
+      name: '示例企业',
+      slug: 'example-company',
+      createdAt,
+      updatedAt: createdAt,
+    }
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            mode: 'single',
+            canCreate: true,
+            creationUnavailableReason: null,
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(created), {
+          status: 201,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(getOrganizationCapabilities()).resolves.toMatchObject({
+      mode: 'single',
+      canCreate: true,
+    })
+    await expect(
+      createOrganization({ name: '示例企业', slug: 'example-company' }),
+    ).resolves.toEqual(created)
+    expect(fetchMock.mock.calls[0]?.[0]).toContain('/organizations/capabilities')
+    expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({ method: 'POST' })
+  })
+
   it('loads the current user organizations and organization structure', async () => {
     const summary = {
       id: organizationId,

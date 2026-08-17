@@ -48,7 +48,8 @@ export function accessRestriction(
 export function defaultAuthenticatedPath(roles: readonly OrganizationRole[]): string {
   if (canAccessCapability('operations:view', roles)) return '/dashboard'
   if (canAccessCapability('assistant:use', roles)) return '/assistant'
-  return '/ask'
+  if (roles.length > 0) return '/ask'
+  return '/organization'
 }
 
 export function highestRoleLabel(roles: readonly OrganizationRole[]): string {
