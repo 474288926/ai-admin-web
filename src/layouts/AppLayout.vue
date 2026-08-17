@@ -10,6 +10,7 @@ import {
   Histogram,
   House,
   Monitor,
+  OfficeBuilding,
   Operation,
   ChatDotRound,
   Coin,
@@ -18,6 +19,7 @@ import {
   UploadFilled,
 } from '@element-plus/icons-vue'
 
+import { canAccessCapability, highestRoleLabel, type AppCapability } from '@/router/access-control'
 import { useAuthStore } from '@/stores/auth'
 
 const route = useRoute()
@@ -27,21 +29,56 @@ const collapsed = ref(false)
 
 const pageTitle = computed(() => String(route.meta.title ?? '运营管理'))
 const userName = computed(() => authStore.user?.name || authStore.user?.email || '知识管理员')
+const currentRoleLabel = computed(() => highestRoleLabel(authStore.organizationRoles))
 
-const menuItems = [
-  { path: '/dashboard', label: '运营总览', icon: House },
-  { path: '/assistant', label: '知识辅助', icon: ChatDotRound },
-  { path: '/knowledge-bases', label: '知识库管理', icon: Collection },
-  { path: '/documents', label: '文档管理', icon: Document },
-  { path: '/document-sources', label: '企业文档同步', icon: Connection },
-  { path: '/ingestion', label: '处理任务', icon: UploadFilled },
-  { path: '/retrieval', label: '检索调试', icon: Operation },
-  { path: '/quality', label: '质量分析', icon: DataAnalysis },
+const menuItems: Array<{
+  path: string
+  label: string
+  icon: typeof House
+  capability?: AppCapability
+}> = [
+  { path: '/dashboard', label: '运营总览', icon: House, capability: 'operations:view' },
+  {
+    path: '/organization',
+    label: '企业管理',
+    icon: OfficeBuilding,
+    capability: 'organization:manage',
+  },
+  { path: '/assistant', label: '知识辅助', icon: ChatDotRound, capability: 'assistant:use' },
+  {
+    path: '/knowledge-bases',
+    label: '知识库管理',
+    icon: Collection,
+    capability: 'knowledge:view',
+  },
+  { path: '/documents', label: '文档管理', icon: Document, capability: 'knowledge:manage' },
+  {
+    path: '/document-sources',
+    label: '企业文档同步',
+    icon: Connection,
+    capability: 'knowledge:manage',
+  },
+  {
+    path: '/ingestion',
+    label: '处理任务',
+    icon: UploadFilled,
+    capability: 'knowledge:manage',
+  },
+  { path: '/retrieval', label: '检索调试', icon: Operation, capability: 'knowledge:manage' },
+  { path: '/quality', label: '质量分析', icon: DataAnalysis, capability: 'knowledge:manage' },
   { path: '/ai-usage', label: '模型用量', icon: Coin },
-  { path: '/model-health', label: '模型健康', icon: Monitor },
-  { path: '/evaluations', label: '评测中心', icon: Histogram },
-  { path: '/settings', label: '系统配置', icon: Setting },
+  { path: '/model-health', label: '模型健康', icon: Monitor, capability: 'system:view' },
+  {
+    path: '/evaluations',
+    label: '评测中心',
+    icon: Histogram,
+    capability: 'knowledge:manage',
+  },
+  { path: '/settings', label: '系统配置', icon: Setting, capability: 'system:view' },
 ]
+const visibleMenuItems = computed(() =>
+  menuItems.filter((item) => canAccessCapability(item.capability, authStore.organizationRoles)),
+)
 
 async function handleLogout(): Promise<void> {
   await authStore.logout()
@@ -61,7 +98,7 @@ async function handleLogout(): Promise<void> {
       </div>
 
       <el-menu :default-active="route.path" router class="app-menu" :collapse="collapsed">
-        <el-menu-item v-for="item in menuItems" :key="item.path" :index="item.path">
+        <el-menu-item v-for="item in visibleMenuItems" :key="item.path" :index="item.path">
           <el-icon><component :is="item.icon" /></el-icon>
           <template #title>{{ item.label }}</template>
         </el-menu-item>
@@ -86,7 +123,8 @@ async function handleLogout(): Promise<void> {
           </button>
           <template #dropdown>
             <el-dropdown-menu>
-              <el-dropdown-item :icon="SwitchButton" @click="handleLogout"
+              <el-dropdown-item disabled>{{ currentRoleLabel }}</el-dropdown-item>
+              <el-dropdown-item divided :icon="SwitchButton" @click="handleLogout"
                 >退出登录</el-dropdown-item
               >
             </el-dropdown-menu>

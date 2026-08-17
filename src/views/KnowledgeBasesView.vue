@@ -16,8 +16,10 @@ import {
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { useRouter } from 'vue-router'
 
+import { canAccessCapability, canManageOrganizationKnowledge } from '@/router/access-control'
 import { ApiError } from '@/services/api/client'
 import * as knowledgeBaseApi from '@/services/api/knowledge-bases'
+import { useAuthStore } from '@/stores/auth'
 import type {
   CreateKnowledgeBaseInput,
   KnowledgeBase,
@@ -34,6 +36,7 @@ interface KnowledgeBaseForm {
 
 const PAGE_SIZE = 20
 const router = useRouter()
+const authStore = useAuthStore()
 const queryClient = useQueryClient()
 const page = ref(1)
 const search = ref('')
@@ -88,8 +91,22 @@ const knowledgeBases = computed(() => knowledgeBasesQuery.data.value?.items ?? [
 const meta = computed(() => knowledgeBasesQuery.data.value?.meta)
 const submitting = computed(() => createMutation.isPending.value || updateMutation.isPending.value)
 const dialogTitle = computed(() => (editingId.value ? '编辑知识库' : '新建知识库'))
+const canManageKnowledge = computed(() =>
+  canAccessCapability('knowledge:manage', authStore.organizationRoles),
+)
 const organizationMap = computed(
   () => new Map((organizationsQuery.data.value ?? []).map((item) => [item.id, item.name])),
+)
+const organizationRoleMap = computed(
+  () =>
+    new Map(
+      (organizationsQuery.data.value ?? []).map((item) => [item.id, item.currentRole] as const),
+    ),
+)
+const manageableOrganizations = computed(() =>
+  (organizationsQuery.data.value ?? []).filter((item) =>
+    canManageOrganizationKnowledge(item.currentRole),
+  ),
 )
 const filteredKnowledgeBases = computed(() => {
   const keyword = search.value.trim().toLocaleLowerCase()
@@ -125,12 +142,20 @@ function resetForm(): void {
 }
 
 function openCreate(): void {
+  if (!canManageKnowledge.value) {
+    ElMessage.warning('当前角色只能查看知识库')
+    return
+  }
   resetForm()
   dialogVisible.value = true
 }
 
 function openEdit(row: Record<string, unknown>): void {
   const item = row as unknown as KnowledgeBase
+  if (!canManageKnowledgeBase(item)) {
+    ElMessage.warning('你没有管理此知识库的权限')
+    return
+  }
   editingId.value = item.id
   form.name = item.name
   form.description = item.description ?? ''
@@ -140,6 +165,16 @@ function openEdit(row: Record<string, unknown>): void {
 }
 
 async function saveKnowledgeBase(): Promise<void> {
+  const editingKnowledgeBase = editingId.value
+    ? knowledgeBases.value.find((item) => item.id === editingId.value)
+    : null
+  if (
+    (editingKnowledgeBase && !canManageKnowledgeBase(editingKnowledgeBase)) ||
+    (!editingKnowledgeBase && !canManageSelectedOrganization())
+  ) {
+    ElMessage.warning('你没有在当前范围管理知识库的权限')
+    return
+  }
   if (!(await formRef.value?.validate().catch(() => false))) return
 
   const description = form.description.trim()
@@ -172,6 +207,10 @@ async function saveKnowledgeBase(): Promise<void> {
 
 async function removeKnowledgeBase(row: Record<string, unknown>): Promise<void> {
   const item = row as unknown as KnowledgeBase
+  if (!canManageKnowledgeBase(item)) {
+    ElMessage.warning('你没有管理此知识库的权限')
+    return
+  }
   try {
     await ElMessageBox.confirm(
       `删除后“${item.name}”将不再出现在管理端，现有数据会被软删除。`,
@@ -186,6 +225,19 @@ async function removeKnowledgeBase(row: Record<string, unknown>): Promise<void> 
     if (error === 'cancel' || error === 'close') return
     ElMessage.error(getErrorMessage(error))
   }
+}
+
+function canManageSelectedOrganization(): boolean {
+  if (!canManageKnowledge.value) return false
+  if (!form.organizationId) return true
+  return canManageOrganizationKnowledge(organizationRoleMap.value.get(form.organizationId))
+}
+
+function canManageKnowledgeBase(row: unknown): boolean {
+  const item = row as KnowledgeBase
+  if (!canManageKnowledge.value) return false
+  if (item.organizationId === null) return true
+  return canManageOrganizationKnowledge(organizationRoleMap.value.get(item.organizationId))
 }
 
 function visibilityLabel(value: KnowledgeBaseVisibility): string {
@@ -218,7 +270,14 @@ function formatDate(value: string): string {
         <h2>知识库</h2>
         <p>集中管理内部制度、产品文档、操作手册和客服知识，为每类内容设置明确的归属与访问范围。</p>
       </div>
-      <el-button type="primary" :icon="Plus" size="large" @click="openCreate">新建知识库</el-button>
+      <el-button
+        v-if="canManageKnowledge"
+        type="primary"
+        :icon="Plus"
+        size="large"
+        @click="openCreate"
+        >新建知识库</el-button
+      >
     </section>
 
     <section class="knowledge-toolbar">
@@ -267,10 +326,18 @@ function formatDate(value: string): string {
       <el-empty
         v-else-if="!knowledgeBasesQuery.isLoading.value && filteredKnowledgeBases.length === 0"
         :description="
-          knowledgeBases.length ? '当前筛选条件下没有知识库' : '还没有知识库，创建第一个知识空间吧'
+          knowledgeBases.length
+            ? '当前筛选条件下没有知识库'
+            : canManageKnowledge
+              ? '还没有知识库，创建第一个知识空间吧'
+              : '暂无可访问的知识库'
         "
       >
-        <el-button v-if="!knowledgeBases.length" type="primary" :icon="Plus" @click="openCreate"
+        <el-button
+          v-if="!knowledgeBases.length && canManageKnowledge"
+          type="primary"
+          :icon="Plus"
+          @click="openCreate"
           >新建知识库</el-button
         >
       </el-empty>
@@ -316,7 +383,7 @@ function formatDate(value: string): string {
           </el-table-column>
           <el-table-column label="操作" width="250" fixed="right">
             <template #default="{ row }">
-              <div class="table-actions">
+              <div v-if="canManageKnowledgeBase(row)" class="table-actions">
                 <el-button
                   link
                   type="primary"
@@ -353,6 +420,7 @@ function formatDate(value: string): string {
                   </template>
                 </el-dropdown>
               </div>
+              <el-tag v-else type="info" effect="plain">只读</el-tag>
             </template>
           </el-table-column>
         </el-table>
@@ -399,7 +467,7 @@ function formatDate(value: string): string {
           >
             <el-option label="个人知识库" value="" />
             <el-option
-              v-for="organization in organizationsQuery.data.value ?? []"
+              v-for="organization in manageableOrganizations"
               :key="organization.id"
               :label="organization.name"
               :value="organization.id"

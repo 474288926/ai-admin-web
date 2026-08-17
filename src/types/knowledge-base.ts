@@ -10,13 +10,12 @@ export interface KnowledgeBase {
   updatedAt: string
 }
 
-export interface OrganizationSummary {
-  id: string
-  name: string
-  slug: string
-  createdAt: string
-  updatedAt: string
-}
+export type {
+  OrganizationMemberStatus,
+  OrganizationRole,
+  OrganizationStructure,
+  OrganizationSummary,
+} from './organization'
 
 export interface PaginationMeta {
   page: number
@@ -76,20 +75,4 @@ export interface UpsertKnowledgeBaseGrantInput {
   targetType: ResourceGrantTargetType
   targetId: string
   permission: ResourcePermissionLevel
-}
-
-export type OrganizationRole = 'OWNER' | 'ADMIN' | 'KNOWLEDGE_ADMIN' | 'MEMBER' | 'SUPPORT'
-export type OrganizationMemberStatus = 'INVITED' | 'ACTIVE' | 'SUSPENDED'
-
-export interface OrganizationStructure extends OrganizationSummary {
-  memberships: Array<{
-    id: string
-    userId: string
-    role: OrganizationRole
-    status: OrganizationMemberStatus
-    joinedAt: string | null
-    user: { email: string; name: string | null }
-  }>
-  departments: Array<{ id: string; name: string; parentId: string | null }>
-  groups: Array<{ id: string; name: string; description: string | null }>
 }

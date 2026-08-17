@@ -10,6 +10,7 @@ const supportCredentialsConfigured = Boolean(supportEmail && supportPassword)
 
 const businessPages = [
   { path: '/dashboard', pageTitle: '运营总览', contentTitle: '运营基座已经就绪' },
+  { path: '/organization', pageTitle: '企业管理', contentTitle: '企业管理' },
   { path: '/assistant', pageTitle: '知识辅助', contentTitle: '客服知识辅助' },
   { path: '/knowledge-bases', pageTitle: '知识库管理', contentTitle: '知识库' },
   { path: '/documents', pageTitle: '文档管理', contentTitle: '文档管理' },
@@ -44,10 +45,22 @@ const mockSession = {
   },
 } as const
 
+const mockOrganizations = [
+  {
+    id: '10000000-0000-4000-8000-000000000011',
+    name: 'E2E 测试企业',
+    slug: 'e2e-organization',
+    currentRole: 'OWNER',
+    createdAt: '2026-08-14T00:00:00.000Z',
+    updatedAt: '2026-08-14T00:00:00.000Z',
+  },
+] as const
+
 async function useMockSession(page: Page): Promise<void> {
   await page.addInitScript((session) => {
     window.localStorage.setItem('knowledge-admin-session', JSON.stringify(session))
   }, mockSession)
+  await page.route('**/api/v1/organizations', (route) => fulfillJson(route, mockOrganizations))
 }
 
 function fulfillJson(route: Route, body: unknown, status = 200): Promise<void> {
@@ -444,6 +457,10 @@ test('模型选择器把选中的模型传给问答接口', async ({ page }) => 
       ])
     }
 
+    if (url.pathname === '/api/v1/organizations') {
+      return fulfillJson(route, mockOrganizations)
+    }
+
     if (url.pathname === '/api/v1/knowledge-bases') {
       return fulfillJson(route, {
         items: [
@@ -743,16 +760,18 @@ if (managerCredentialsConfigured)
 
 if (supportCredentialsConfigured)
   test.describe('客服权限边界', () => {
-    test('客服可以访问授权知识库，但系统配置接口明确拒绝访问', async ({ page }) => {
+    test('客服可以访问授权知识库，但管理页面在路由层被拦截', async ({ page }) => {
       await login(page, supportEmail!, supportPassword!)
 
       await page.goto('/knowledge-bases')
       await expect(page.getByRole('heading', { name: '知识库', level: 2 })).toBeVisible()
       await expect(page.getByRole('table').last().getByRole('row')).toHaveCount(1)
+      await expect(page.getByRole('menuitem', { name: '企业管理' })).toHaveCount(0)
+      await expect(page.getByRole('menuitem', { name: '系统配置' })).toHaveCount(0)
 
       await page.goto('/settings')
-      await expect(page.getByText('无法读取系统配置')).toBeVisible()
-      await expect(page.getByText('仅组织管理员可查看系统运行配置')).toBeVisible()
+      await expect(page).toHaveURL(/\/forbidden\?reason=denied/)
+      await expect(page.getByText('无权访问此页面')).toBeVisible()
     })
 
     test('客服工作台只加载受控上下文且不会自动生成或发送', async ({ page }) => {
