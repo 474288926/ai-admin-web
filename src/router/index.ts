@@ -1,6 +1,20 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 
+import {
+  accessRestriction,
+  defaultAuthenticatedPath,
+  type AppCapability,
+} from '@/router/access-control'
 import { useAuthStore } from '@/stores/auth'
+
+declare module 'vue-router' {
+  interface RouteMeta {
+    public?: boolean
+    title?: string
+    description?: string
+    capability?: AppCapability
+  }
+}
 
 const routes: RouteRecordRaw[] = [
   {
@@ -14,6 +28,12 @@ const routes: RouteRecordRaw[] = [
     name: 'oidc-callback',
     component: () => import('@/views/OidcCallbackView.vue'),
     meta: { public: true, title: '企业登录' },
+  },
+  {
+    path: '/accept-invitation',
+    name: 'accept-invitation',
+    component: () => import('@/views/AcceptInvitationView.vue'),
+    meta: { public: true, title: '接受企业邀请' },
   },
   {
     path: '/portal',
@@ -31,7 +51,11 @@ const routes: RouteRecordRaw[] = [
     path: '/support/embed',
     name: 'support-workbench-embed',
     component: () => import('@/views/SupportWorkbenchEmbedView.vue'),
-    meta: { title: '客服知识辅助', description: '嵌入客服工作台的人工确认知识辅助面板。' },
+    meta: {
+      title: '客服知识辅助',
+      description: '嵌入客服工作台的人工确认知识辅助面板。',
+      capability: 'support:use',
+    },
   },
   {
     path: '/',
@@ -42,55 +66,97 @@ const routes: RouteRecordRaw[] = [
         path: 'dashboard',
         name: 'dashboard',
         component: () => import('@/views/DashboardView.vue'),
-        meta: { title: '运营总览' },
+        meta: { title: '运营总览', capability: 'operations:view' },
+      },
+      {
+        path: 'organization',
+        name: 'organization',
+        component: () => import('@/views/OrganizationView.vue'),
+        meta: {
+          title: '企业管理',
+          description: '管理企业成员、角色与组织结构。',
+          capability: 'organization:manage',
+        },
       },
       {
         path: 'assistant',
         name: 'assistant',
         component: () => import('@/views/AssistantView.vue'),
-        meta: { title: '知识辅助', description: '基于授权知识库为客服提供可追溯的回答建议。' },
+        meta: {
+          title: '知识辅助',
+          description: '基于授权知识库为客服提供可追溯的回答建议。',
+          capability: 'assistant:use',
+        },
       },
       {
         path: 'knowledge-bases',
         name: 'knowledge-bases',
         component: () => import('@/views/KnowledgeBasesView.vue'),
-        meta: { title: '知识库管理', description: '维护知识库、成员范围与共享权限。' },
+        meta: {
+          title: '知识库管理',
+          description: '维护知识库、成员范围与共享权限。',
+          capability: 'knowledge:view',
+        },
       },
       {
         path: 'knowledge-bases/:knowledgeBaseId/grants',
         name: 'knowledge-base-grants',
         component: () => import('@/views/KnowledgeBaseGrantsView.vue'),
-        meta: { title: '知识库权限', description: '配置用户、部门和用户组的访问权限。' },
+        meta: {
+          title: '知识库权限',
+          description: '配置用户、部门和用户组的访问权限。',
+          capability: 'knowledge:manage',
+        },
       },
       {
         path: 'documents',
         name: 'documents',
         component: () => import('@/views/DocumentsView.vue'),
-        meta: { title: '文档管理', description: '上传、更新、发布和下架知识文档。' },
+        meta: {
+          title: '文档管理',
+          description: '上传、更新、发布和下架知识文档。',
+          capability: 'knowledge:manage',
+        },
       },
       {
         path: 'document-sources',
         name: 'document-sources',
         component: () => import('@/views/DocumentSourcesView.vue'),
-        meta: { title: '企业文档同步', description: '管理企业文档源及增量同步记录。' },
+        meta: {
+          title: '企业文档同步',
+          description: '管理企业文档源及增量同步记录。',
+          capability: 'knowledge:manage',
+        },
       },
       {
         path: 'ingestion',
         name: 'ingestion',
         component: () => import('@/views/IngestionView.vue'),
-        meta: { title: '处理任务', description: '查看解析、切片、向量化进度并处理失败任务。' },
+        meta: {
+          title: '处理任务',
+          description: '查看解析、切片、向量化进度并处理失败任务。',
+          capability: 'knowledge:manage',
+        },
       },
       {
         path: 'retrieval',
         name: 'retrieval',
         component: () => import('@/views/RetrievalView.vue'),
-        meta: { title: '检索调试', description: '分析向量、关键词、融合与重排阶段的召回结果。' },
+        meta: {
+          title: '检索调试',
+          description: '分析向量、关键词、融合与重排阶段的召回结果。',
+          capability: 'knowledge:manage',
+        },
       },
       {
         path: 'quality',
         name: 'quality',
         component: () => import('@/views/QualityView.vue'),
-        meta: { title: '质量分析', description: '跟踪点踩、未命中、高频问题和引用质量。' },
+        meta: {
+          title: '质量分析',
+          description: '跟踪点踩、未命中、高频问题和引用质量。',
+          capability: 'knowledge:manage',
+        },
       },
       {
         path: 'ai-usage',
@@ -102,19 +168,37 @@ const routes: RouteRecordRaw[] = [
         path: 'model-health',
         name: 'model-health',
         component: () => import('@/views/ModelHealthView.vue'),
-        meta: { title: '模型健康', description: '查看模型成功率、响应耗时和故障切换情况。' },
+        meta: {
+          title: '模型健康',
+          description: '查看模型成功率、响应耗时和故障切换情况。',
+          capability: 'system:view',
+        },
       },
       {
         path: 'evaluations',
         name: 'evaluations',
         component: () => import('@/views/EvaluationsView.vue'),
-        meta: { title: '评测中心', description: '运行固定评测集并对比历史质量基线。' },
+        meta: {
+          title: '评测中心',
+          description: '运行固定评测集并对比历史质量基线。',
+          capability: 'knowledge:manage',
+        },
       },
       {
         path: 'settings',
         name: 'settings',
         component: () => import('@/views/SettingsView.vue'),
-        meta: { title: '系统配置', description: '安全查看模型、Prompt 与运营参数。' },
+        meta: {
+          title: '系统配置',
+          description: '安全查看模型、Prompt 与运营参数。',
+          capability: 'system:view',
+        },
+      },
+      {
+        path: 'forbidden',
+        name: 'forbidden',
+        component: () => import('@/views/ForbiddenView.vue'),
+        meta: { title: '访问受限' },
       },
     ],
   },
@@ -126,7 +210,7 @@ const router = createRouter({
   routes,
 })
 
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
   const authStore = useAuthStore()
   authStore.hydrate()
 
@@ -134,8 +218,25 @@ router.beforeEach((to) => {
     return { name: 'login', query: { redirect: to.fullPath } }
   }
 
-  if (to.name === 'login' && authStore.isAuthenticated) {
-    return { name: 'dashboard' }
+  if (authStore.isAuthenticated) {
+    await authStore.ensureAccessProfile()
+
+    if (to.name === 'login') {
+      return defaultAuthenticatedPath(authStore.organizationRoles)
+    }
+
+    const restriction = accessRestriction(
+      to.meta.capability,
+      authStore.organizationRoles,
+      authStore.accessProfileError,
+      to.fullPath,
+    )
+    if (restriction) {
+      return {
+        name: 'forbidden',
+        query: restriction,
+      }
+    }
   }
 
   document.title = `${String(to.meta.title ?? '管理端')} · 知识库智能助手`

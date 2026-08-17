@@ -38,6 +38,7 @@ const organizationSchema = z.object({
   id: z.uuid(),
   name: z.string(),
   slug: z.string(),
+  currentRole: z.enum(['OWNER', 'ADMIN', 'KNOWLEDGE_ADMIN', 'MEMBER', 'SUPPORT']),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
 })
@@ -79,8 +80,23 @@ const organizationStructureSchema = organizationSchema.extend({
       user: z.object({ email: z.email(), name: z.string().nullable() }),
     }),
   ),
-  departments: z.array(z.object({ id: z.uuid(), name: z.string(), parentId: z.uuid().nullable() })),
-  groups: z.array(z.object({ id: z.uuid(), name: z.string(), description: z.string().nullable() })),
+  departments: z.array(
+    z.object({
+      id: z.uuid(),
+      name: z.string(),
+      parentId: z.uuid().nullable(),
+      sourceSystem: z.string().nullable(),
+      memberIds: z.array(z.uuid()),
+    }),
+  ),
+  groups: z.array(
+    z.object({
+      id: z.uuid(),
+      name: z.string(),
+      description: z.string().nullable(),
+      memberIds: z.array(z.uuid()),
+    }),
+  ),
 })
 
 export async function listKnowledgeBases(
