@@ -121,6 +121,40 @@ test('办公门户入口适配移动端且没有页面级横向溢出', async ({
   expect(overflow).toBeLessThanOrEqual(1)
 })
 
+test('企业管理员可以从统一入口新增成员', async ({ page }) => {
+  await useMockSession(page)
+  const organization = mockOrganizations[0]
+
+  await page.route(`**/api/v1/organizations/${organization.id}`, (route) =>
+    fulfillJson(route, {
+      ...organization,
+      memberships: [
+        {
+          id: '10000000-0000-4000-8000-000000000012',
+          userId: mockSession.user.id,
+          role: 'OWNER',
+          status: 'ACTIVE',
+          joinedAt: '2026-08-14T00:00:00.000Z',
+          user: { email: mockSession.user.email, name: mockSession.user.name },
+        },
+      ],
+      departments: [],
+      groups: [],
+    }),
+  )
+  await page.route(`**/api/v1/organizations/${organization.id}/invitations`, (route) =>
+    fulfillJson(route, []),
+  )
+
+  await page.goto('/organization')
+
+  const addMemberButton = page.getByRole('button', { name: '新增成员' })
+  await expect(addMemberButton).toBeVisible()
+  await addMemberButton.click()
+  await page.getByRole('menuitem', { name: '邀请新成员' }).click()
+  await expect(page.getByRole('dialog', { name: '邀请新成员' })).toBeVisible()
+})
+
 test('系统配置页展示实际启用的多模型与 Prompt 版本', async ({ page }) => {
   await useMockSession(page)
   const systemConfiguration = {
