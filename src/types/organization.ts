@@ -1,5 +1,28 @@
 export type OrganizationRole = 'OWNER' | 'ADMIN' | 'KNOWLEDGE_ADMIN' | 'MEMBER' | 'SUPPORT'
 export type OrganizationMemberStatus = 'INVITED' | 'ACTIVE' | 'SUSPENDED'
+export type OrganizationMode = 'single' | 'multi'
+export type OrganizationCreationUnavailableReason =
+  | 'SINGLE_ORGANIZATION_EXISTS'
+  | 'BOOTSTRAP_OWNER_REQUIRED'
+
+export interface OrganizationCapabilities {
+  mode: OrganizationMode
+  canCreate: boolean
+  creationUnavailableReason: OrganizationCreationUnavailableReason | null
+}
+
+export interface CreateOrganizationInput {
+  name: string
+  slug: string
+}
+
+export interface CreatedOrganization {
+  id: string
+  name: string
+  slug: string
+  createdAt: string
+  updatedAt: string
+}
 
 export interface OrganizationSummary {
   id: string

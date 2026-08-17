@@ -3,10 +3,13 @@ import { z } from 'zod'
 import type {
   AddOrganizationMemberByEmailInput,
   CreatedOrganizationInvitation,
+  CreatedOrganization,
+  CreateOrganizationInput,
   CreateOrganizationInvitationInput,
   DepartmentInput,
   OrganizationInvitation,
   OrganizationInvitationPreview,
+  OrganizationCapabilities,
   OrganizationStructure,
   OrganizationSummary,
   UpdateOrganizationMemberInput,
@@ -23,6 +26,15 @@ const organizationSummarySchema = z.object({
   currentRole: z.enum(['OWNER', 'ADMIN', 'KNOWLEDGE_ADMIN', 'MEMBER', 'SUPPORT']),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
+})
+
+const createdOrganizationSchema = organizationSummarySchema.omit({ currentRole: true })
+const organizationCapabilitiesSchema = z.object({
+  mode: z.enum(['single', 'multi']),
+  canCreate: z.boolean(),
+  creationUnavailableReason: z
+    .enum(['SINGLE_ORGANIZATION_EXISTS', 'BOOTSTRAP_OWNER_REQUIRED'])
+    .nullable(),
 })
 
 const organizationMemberSchema = z.object({
@@ -79,6 +91,21 @@ const organizationInvitationPreviewSchema = z.object({
 export async function listOrganizations(): Promise<OrganizationSummary[]> {
   const result = await apiRequest<unknown>('/organizations')
   return z.array(organizationSummarySchema).parse(result)
+}
+
+export async function getOrganizationCapabilities(): Promise<OrganizationCapabilities> {
+  const result = await apiRequest<unknown>('/organizations/capabilities')
+  return organizationCapabilitiesSchema.parse(result)
+}
+
+export async function createOrganization(
+  input: CreateOrganizationInput,
+): Promise<CreatedOrganization> {
+  const result = await apiRequest<unknown>('/organizations', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+  return createdOrganizationSchema.parse(result)
 }
 
 export async function getOrganization(id: string): Promise<OrganizationStructure> {

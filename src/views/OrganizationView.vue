@@ -21,6 +21,7 @@ import * as organizationApi from '@/services/api/organizations'
 import { useAuthStore } from '@/stores/auth'
 import type {
   AddOrganizationMemberByEmailInput,
+  CreateOrganizationInput,
   CreateOrganizationInvitationInput,
   DepartmentInput,
   OrganizationDepartment,
@@ -51,6 +52,7 @@ const authStore = useAuthStore()
 const queryClient = useQueryClient()
 const selectedOrganizationId = ref('')
 const search = ref('')
+const createOrganizationDialogVisible = ref(false)
 const addDialogVisible = ref(false)
 const inviteDialogVisible = ref(false)
 const departmentDialogVisible = ref(false)
@@ -62,10 +64,15 @@ const editingDepartmentId = ref<string | null>(null)
 const editingGroupId = ref<string | null>(null)
 const activeUnit = ref<EditableOrganizationUnit | null>(null)
 const selectedUnitMemberIds = ref<string[]>([])
+const createOrganizationFormRef = ref<FormInstance>()
 const addFormRef = ref<FormInstance>()
 const inviteFormRef = ref<FormInstance>()
 const departmentFormRef = ref<FormInstance>()
 const groupFormRef = ref<FormInstance>()
+const createOrganizationForm = reactive<CreateOrganizationInput>({
+  name: '',
+  slug: '',
+})
 const addForm = reactive<AddOrganizationMemberByEmailInput>({
   email: '',
   role: 'MEMBER',
@@ -97,12 +104,31 @@ const departmentRules: FormRules<DepartmentInput> = {
 const groupRules: FormRules<UserGroupInput> = {
   name: [{ required: true, message: '请输入用户组名称', trigger: 'blur' }],
 }
+const createOrganizationRules: FormRules<CreateOrganizationInput> = {
+  name: [
+    { required: true, message: '请输入企业名称', trigger: 'blur' },
+    { max: 150, message: '企业名称不能超过 150 个字符', trigger: 'blur' },
+  ],
+  slug: [
+    { required: true, message: '请输入企业标识', trigger: 'blur' },
+    {
+      pattern: /^[a-z0-9]+(?:-[a-z0-9]+)*$/,
+      message: '只能使用小写字母、数字和单个连字符',
+      trigger: ['blur', 'change'],
+    },
+  ],
+}
 
 const organizationsQuery = useQuery({
   queryKey: ['organizations'],
   queryFn: organizationApi.listOrganizations,
 })
 const organizations = computed(() => organizationsQuery.data.value ?? [])
+const organizationCapabilitiesQuery = useQuery({
+  queryKey: ['organization-capabilities'],
+  queryFn: organizationApi.getOrganizationCapabilities,
+})
+const organizationCapabilities = computed(() => organizationCapabilitiesQuery.data.value)
 
 watch(
   organizations,
@@ -116,6 +142,10 @@ const organizationQuery = useQuery({
   queryKey: computed(() => ['organization', selectedOrganizationId.value]),
   queryFn: () => organizationApi.getOrganization(selectedOrganizationId.value),
   enabled: computed(() => Boolean(selectedOrganizationId.value)),
+})
+
+const createOrganizationMutation = useMutation({
+  mutationFn: organizationApi.createOrganization,
 })
 
 const addMemberMutation = useMutation({
@@ -215,6 +245,17 @@ const filteredMembers = computed(() => {
 const activeMemberCount = computed(
   () => organization.value?.memberships.filter((item) => item.status === 'ACTIVE').length ?? 0,
 )
+const emptyOrganizationDescription = computed(() => {
+  if (organizationCapabilities.value?.canCreate) {
+    return organizationCapabilities.value.mode === 'single'
+      ? '当前部署尚未初始化企业'
+      : '当前账号尚未加入企业'
+  }
+  if (organizationCapabilities.value?.creationUnavailableReason === 'BOOTSTRAP_OWNER_REQUIRED') {
+    return '当前账号不是企业初始化所有者，请使用指定账号登录'
+  }
+  return '企业已经初始化，请联系企业管理员邀请加入'
+})
 const departmentParentOptions = computed(() => {
   const departments = organization.value?.departments ?? []
   if (!editingDepartmentId.value) return departments
@@ -278,6 +319,33 @@ function departmentName(parentId: string | null): string {
 function memberOptionLabel(member: OrganizationMember): string {
   const name = member.user.name?.trim()
   return `${name || member.user.email}${name ? ` · ${member.user.email}` : ''}`
+}
+
+function openCreateOrganization(): void {
+  createOrganizationForm.name = ''
+  createOrganizationForm.slug = ''
+  createOrganizationFormRef.value?.clearValidate()
+  createOrganizationDialogVisible.value = true
+}
+
+async function saveOrganization(): Promise<void> {
+  if (!(await createOrganizationFormRef.value?.validate().catch(() => false))) return
+  try {
+    const created = await createOrganizationMutation.mutateAsync({
+      name: createOrganizationForm.name.trim(),
+      slug: createOrganizationForm.slug.trim(),
+    })
+    createOrganizationDialogVisible.value = false
+    selectedOrganizationId.value = created.id
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['organizations'] }),
+      queryClient.invalidateQueries({ queryKey: ['organization-capabilities'] }),
+      authStore.ensureAccessProfile(true),
+    ])
+    ElMessage.success('企业已创建，你已成为企业所有者')
+  } catch (error) {
+    ElMessage.error(getErrorMessage(error))
+  }
 }
 
 function openAddMember(): void {
@@ -541,19 +609,29 @@ async function deleteUnit(kind: OrganizationUnitKind, id: string, name: string):
           <p>集中查看当前企业的成员角色、在职状态和组织结构。</p>
         </div>
       </div>
-      <el-select
-        v-model="selectedOrganizationId"
-        class="organization-select"
-        placeholder="选择企业"
-        :loading="organizationsQuery.isLoading.value"
-      >
-        <el-option
-          v-for="item in organizations"
-          :key="item.id"
-          :label="item.name"
-          :value="item.id"
-        />
-      </el-select>
+      <div class="organization-heading-actions">
+        <el-button
+          v-if="organizations.length > 0 && organizationCapabilities?.canCreate"
+          :icon="Plus"
+          @click="openCreateOrganization"
+        >
+          新增企业
+        </el-button>
+        <el-select
+          v-if="organizations.length > 0"
+          v-model="selectedOrganizationId"
+          class="organization-select"
+          placeholder="选择企业"
+          :loading="organizationsQuery.isLoading.value"
+        >
+          <el-option
+            v-for="item in organizations"
+            :key="item.id"
+            :label="item.name"
+            :value="item.id"
+          />
+        </el-select>
+      </div>
     </section>
 
     <el-alert
@@ -565,10 +643,32 @@ async function deleteUnit(kind: OrganizationUnitKind, id: string, name: string):
       :closable="false"
     />
 
-    <el-empty
-      v-else-if="!organizationsQuery.isLoading.value && organizations.length === 0"
-      description="当前账号尚未加入企业"
+    <el-alert
+      v-else-if="organizationCapabilitiesQuery.isError.value"
+      type="error"
+      title="企业策略加载失败"
+      :description="getErrorMessage(organizationCapabilitiesQuery.error.value)"
+      show-icon
+      :closable="false"
     />
+
+    <el-empty
+      v-else-if="
+        !organizationsQuery.isLoading.value &&
+        !organizationCapabilitiesQuery.isLoading.value &&
+        organizations.length === 0
+      "
+      :description="emptyOrganizationDescription"
+    >
+      <el-button
+        v-if="organizationCapabilities?.canCreate"
+        type="primary"
+        :icon="OfficeBuilding"
+        @click="openCreateOrganization"
+      >
+        {{ organizationCapabilities.mode === 'single' ? '初始化企业' : '创建企业' }}
+      </el-button>
+    </el-empty>
 
     <template v-else-if="selectedOrganizationId">
       <el-skeleton v-if="organizationQuery.isLoading.value" :rows="8" animated />
@@ -960,6 +1060,40 @@ async function deleteUnit(kind: OrganizationUnitKind, id: string, name: string):
     </template>
 
     <el-dialog
+      v-model="createOrganizationDialogVisible"
+      :title="organizationCapabilities?.mode === 'single' ? '初始化企业' : '创建企业'"
+      width="min(520px, calc(100vw - 32px))"
+    >
+      <el-form
+        ref="createOrganizationFormRef"
+        :model="createOrganizationForm"
+        :rules="createOrganizationRules"
+        label-position="top"
+      >
+        <el-form-item label="企业名称" prop="name">
+          <el-input v-model="createOrganizationForm.name" maxlength="150" show-word-limit />
+        </el-form-item>
+        <el-form-item label="企业标识" prop="slug">
+          <el-input
+            v-model="createOrganizationForm.slug"
+            maxlength="100"
+            placeholder="example-company"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="createOrganizationDialogVisible = false">取消</el-button>
+        <el-button
+          type="primary"
+          :loading="createOrganizationMutation.isPending.value"
+          @click="saveOrganization"
+        >
+          确认创建
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog
       v-model="addDialogVisible"
       title="添加企业成员"
       width="min(520px, calc(100vw - 32px))"
@@ -1172,6 +1306,13 @@ async function deleteUnit(kind: OrganizationUnitKind, id: string, name: string):
 .organization-heading {
   justify-content: space-between;
   gap: 24px;
+}
+
+.organization-heading-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
 }
 
 .organization-title {
@@ -1525,6 +1666,7 @@ async function deleteUnit(kind: OrganizationUnitKind, id: string, name: string):
 
 @media (max-width: 640px) {
   .organization-heading,
+  .organization-heading-actions,
   .section-actions {
     flex-direction: column;
     align-items: stretch;

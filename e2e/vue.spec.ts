@@ -56,11 +56,29 @@ const mockOrganizations = [
   },
 ] as const
 
-async function useMockSession(page: Page): Promise<void> {
+async function useMockSession(
+  page: Page,
+  options: {
+    organizations?: unknown
+    capabilities?: unknown
+  } = {},
+): Promise<void> {
   await page.addInitScript((session) => {
     window.localStorage.setItem('knowledge-admin-session', JSON.stringify(session))
   }, mockSession)
-  await page.route('**/api/v1/organizations', (route) => fulfillJson(route, mockOrganizations))
+  await page.route('**/api/v1/organizations/capabilities', (route) =>
+    fulfillJson(
+      route,
+      options.capabilities ?? {
+        mode: 'single',
+        canCreate: false,
+        creationUnavailableReason: 'SINGLE_ORGANIZATION_EXISTS',
+      },
+    ),
+  )
+  await page.route('**/api/v1/organizations', (route) =>
+    fulfillJson(route, options.organizations ?? mockOrganizations),
+  )
 }
 
 function fulfillJson(route: Route, body: unknown, status = 200): Promise<void> {
@@ -153,6 +171,49 @@ test('企业管理员可以从统一入口新增成员', async ({ page }) => {
   await addMemberButton.click()
   await page.getByRole('menuitem', { name: '邀请新成员' }).click()
   await expect(page.getByRole('dialog', { name: '邀请新成员' })).toBeVisible()
+})
+
+test('单企业首次初始化账号可以创建企业', async ({ page }) => {
+  let organizationCreated = false
+  let createBody: Record<string, unknown> | null = null
+  const createdOrganization = mockOrganizations[0]
+
+  await useMockSession(page, {
+    organizations: [],
+    capabilities: {
+      mode: 'single',
+      canCreate: true,
+      creationUnavailableReason: null,
+    },
+  })
+  await page.route('**/api/v1/organizations', async (route) => {
+    const request = route.request()
+    if (request.method() === 'POST') {
+      createBody = request.postDataJSON() as Record<string, unknown>
+      organizationCreated = true
+      return fulfillJson(route, createdOrganization, 201)
+    }
+    return fulfillJson(route, organizationCreated ? [createdOrganization] : [])
+  })
+  await page.route(`**/api/v1/organizations/${createdOrganization.id}`, (route) =>
+    fulfillJson(route, {
+      ...createdOrganization,
+      memberships: [],
+      departments: [],
+      groups: [],
+    }),
+  )
+
+  await page.goto('/organization')
+  await page.getByRole('button', { name: '初始化企业' }).click()
+  const dialog = page.getByRole('dialog', { name: '初始化企业' })
+  await dialog.getByLabel('企业名称').fill('内部知识平台')
+  await dialog.getByLabel('企业标识').fill('internal-knowledge')
+  await dialog.getByRole('button', { name: '确认创建' }).click()
+
+  await expect(page.getByText('企业已创建，你已成为企业所有者')).toBeVisible()
+  await expect(page.getByText('运营总览', { exact: true })).toBeVisible()
+  expect(createBody).toEqual({ name: '内部知识平台', slug: 'internal-knowledge' })
 })
 
 test('系统配置页展示实际启用的多模型与 Prompt 版本', async ({ page }) => {
