@@ -16,6 +16,7 @@ import {
   Coin,
   Setting,
   SwitchButton,
+  Tickets,
   UploadFilled,
 } from '@element-plus/icons-vue'
 
@@ -42,6 +43,12 @@ const menuItems: Array<{
     path: '/organization',
     label: '企业管理',
     icon: OfficeBuilding,
+  },
+  {
+    path: '/organization/audit',
+    label: '操作审计',
+    icon: Tickets,
+    capability: 'organization:audit',
   },
   { path: '/assistant', label: '知识辅助', icon: ChatDotRound, capability: 'assistant:use' },
   {

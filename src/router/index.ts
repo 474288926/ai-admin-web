@@ -78,6 +78,16 @@ const routes: RouteRecordRaw[] = [
         },
       },
       {
+        path: 'organization/audit',
+        name: 'organization-audit',
+        component: () => import('@/views/OrganizationAuditView.vue'),
+        meta: {
+          title: '操作审计',
+          description: '查询企业成员、组织结构与知识资源的操作记录。',
+          capability: 'organization:audit',
+        },
+      },
+      {
         path: 'assistant',
         name: 'assistant',
         component: () => import('@/views/AssistantView.vue'),

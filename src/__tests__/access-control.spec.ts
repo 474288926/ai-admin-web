@@ -13,6 +13,9 @@ describe('role access control', () => {
     expect(canAccessCapability('organization:manage', ['OWNER'])).toBe(true)
     expect(canAccessCapability('organization:manage', ['ADMIN'])).toBe(true)
     expect(canAccessCapability('organization:manage', ['KNOWLEDGE_ADMIN'])).toBe(false)
+    expect(canAccessCapability('organization:audit', ['OWNER'])).toBe(true)
+    expect(canAccessCapability('organization:audit', ['ADMIN'])).toBe(true)
+    expect(canAccessCapability('organization:audit', ['KNOWLEDGE_ADMIN'])).toBe(false)
   })
 
   it('keeps knowledge operations separate from support access', () => {

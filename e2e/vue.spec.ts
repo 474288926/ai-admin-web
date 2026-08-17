@@ -110,6 +110,77 @@ test('未登录访问客服嵌入面板时跳转登录并保留回跳地址', as
   await expect(page.getByRole('heading', { name: '欢迎回来', level: 2 })).toBeVisible()
 })
 
+test('企业管理员可以查询安全裁剪后的操作审计记录', async ({ page }) => {
+  const organization = mockOrganizations[0]
+  await useMockSession(page)
+  await page.route(`**/api/v1/organizations/${organization.id}`, (route) =>
+    fulfillJson(route, {
+      ...organization,
+      capabilities: {
+        directoryAccess: 'FULL',
+        canManageMembers: true,
+        canManageUnits: true,
+        canManageInvitations: true,
+        canTransferOwnership: true,
+        canLeaveOrganization: false,
+      },
+      memberships: [
+        {
+          id: '10000000-0000-4000-8000-000000000012',
+          userId: mockSession.user.id,
+          role: 'OWNER',
+          status: 'ACTIVE',
+          joinedAt: '2026-08-14T00:00:00.000Z',
+          sourceSystem: null,
+          user: { email: mockSession.user.email, name: mockSession.user.name },
+        },
+      ],
+      departments: [],
+      groups: [],
+    }),
+  )
+  await page.route(`**/api/v1/organizations/${organization.id}/audit-logs*`, (route) =>
+    fulfillJson(route, {
+      items: [
+        {
+          id: '10000000-0000-4000-8000-000000000013',
+          entityType: 'ORGANIZATION',
+          entityId: organization.id,
+          action: 'organization.member_updated',
+          changes: { role: 'ADMIN', status: 'ACTIVE' },
+          createdAt: '2026-08-17T02:00:00.000Z',
+          actor: {
+            id: mockSession.user.id,
+            email: mockSession.user.email,
+            name: mockSession.user.name,
+          },
+        },
+      ],
+      meta: { page: 1, pageSize: 20, total: 1, totalPages: 1, hasNextPage: false },
+    }),
+  )
+
+  await page.goto('/organization/audit')
+
+  await expect(page.getByRole('heading', { name: '操作审计', level: 1 })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '企业操作审计', level: 2 })).toBeVisible()
+  const auditTable = page.locator('.audit-table')
+  await expect(auditTable.getByText('调整成员角色或状态')).toBeVisible()
+  await expect(auditTable.getByText('角色：企业管理员，状态：正常')).toBeVisible()
+})
+
+test('普通成员看不到操作审计入口且路由被拒绝', async ({ page }) => {
+  await useMockSession(page, {
+    organizations: [{ ...mockOrganizations[0], currentRole: 'MEMBER' }],
+  })
+
+  await page.goto('/organization/audit')
+
+  await expect(page).toHaveURL(/\/forbidden\?reason=denied/)
+  await expect(page.getByRole('menuitem', { name: '操作审计' })).toHaveCount(0)
+  await expect(page.getByText('无权访问此页面')).toBeVisible()
+})
+
 test('企业登录回调缺少参数时给出可恢复提示', async ({ page }) => {
   await page.goto('/auth/oidc/callback')
 
