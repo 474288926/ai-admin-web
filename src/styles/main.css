@@ -4013,7 +4013,7 @@ input {
   margin: 90px auto 0;
   text-align: center;
 }
-.assistant-welcome > div {
+.assistant-welcome-icon {
   display: grid;
   width: 58px;
   height: 58px;

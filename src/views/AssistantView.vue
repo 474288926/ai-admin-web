@@ -451,7 +451,7 @@ function formatTime(value: string): string {
         <div class="assistant-message-list">
           <div v-if="messagesQuery.isLoading.value" v-loading="true" class="assistant-loading" />
           <section v-else-if="!messages.length" class="assistant-welcome">
-            <div>
+            <div class="assistant-welcome-icon">
               <el-icon><Service /></el-icon>
             </div>
             <h3>今天需要辅助处理什么问题？</h3>
