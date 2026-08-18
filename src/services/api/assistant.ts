@@ -14,7 +14,7 @@ import type {
   PaginatedConversations,
   PaginatedMessages,
 } from '@/types/assistant'
-import { apiRequest } from './client'
+import { apiRequest, createClientRequestId } from './client'
 
 const paginationSchema = z.object({
   page: z.number().int().positive(),
@@ -377,7 +377,7 @@ export async function sendMessage(conversationId: string, content: string, model
   const result = await apiRequest<unknown>(`/conversations/${conversationId}/messages`, {
     method: 'POST',
     body: JSON.stringify({
-      clientRequestId: crypto.randomUUID(),
+      clientRequestId: createClientRequestId(),
       content,
       mode: 'standard',
       ...(modelId ? { modelId } : {}),
@@ -413,7 +413,7 @@ export async function upsertMessageFeedback(
     `/conversations/${conversationId}/messages/${messageId}/feedback`,
     {
       method: 'PUT',
-      body: JSON.stringify({ ...input, clientRequestId: crypto.randomUUID() }),
+      body: JSON.stringify({ ...input, clientRequestId: createClientRequestId() }),
     },
   )
   return feedbackSchema.parse(result)

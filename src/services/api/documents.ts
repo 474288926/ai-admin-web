@@ -6,7 +6,7 @@ import type {
   PaginatedDocuments,
   UpdateDocumentMetadataInput,
 } from '@/types/document'
-import { apiRequest } from './client'
+import { apiRequest, createClientRequestId } from './client'
 
 const nullableDateTime = z.iso.datetime().nullable()
 export const ingestionJobSchema = z.object({
@@ -125,7 +125,7 @@ export async function uploadDocuments(
   files.forEach((file) => formData.append('files', file))
   const result = await apiRequest<unknown>(`/knowledge-bases/${knowledgeBaseId}/document-batches`, {
     method: 'POST',
-    headers: { 'Idempotency-Key': crypto.randomUUID() },
+    headers: { 'Idempotency-Key': createClientRequestId() },
     body: formData,
   })
   return documentBatchSchema.parse(result)
@@ -233,7 +233,7 @@ export async function uploadDocumentVersion(
     `/knowledge-bases/${knowledgeBaseId}/documents/${documentId}/versions`,
     {
       method: 'POST',
-      headers: { 'Idempotency-Key': crypto.randomUUID() },
+      headers: { 'Idempotency-Key': createClientRequestId() },
       body: formData,
     },
   )
