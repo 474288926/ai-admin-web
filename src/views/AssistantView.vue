@@ -46,6 +46,7 @@ const selectedConversationId = ref('')
 const selectedModelId = ref('')
 const draft = ref('')
 const conversationSearch = ref('')
+const recommendedQuestionSearch = ref('')
 const selectedCitation = ref<Citation | null>(null)
 const feedbackByMessage = ref<Record<string, FeedbackRating>>({})
 const feedbackDialogVisible = ref(false)
@@ -72,6 +73,13 @@ const recommendedQuestionsQuery = useQuery({
   enabled: computed(() => Boolean(selectedKnowledgeBaseId.value)),
 })
 const recommendedQuestions = computed(() => recommendedQuestionsQuery.data.value?.items ?? [])
+const filteredRecommendedQuestions = computed(() => {
+  const keyword = recommendedQuestionSearch.value.trim().toLowerCase()
+  if (!keyword) return recommendedQuestions.value
+  return recommendedQuestions.value.filter((item) =>
+    `${item.question} ${scenarioLabel(item.scenario)}`.toLowerCase().includes(keyword),
+  )
+})
 
 const conversationsQuery = useQuery({
   queryKey: ['assistant-conversations'],
@@ -157,6 +165,7 @@ watch(
 watch(selectedKnowledgeBaseId, () => {
   selectedConversationId.value = ''
   selectedCitation.value = null
+  recommendedQuestionSearch.value = ''
 })
 
 function getErrorMessage(error: unknown): string {
@@ -462,6 +471,13 @@ function formatTime(value: string): string {
                 >{{ recommendedQuestionsQuery.data.value.suiteName }} · 已审核</small
               >
             </div>
+            <el-input
+              v-model="recommendedQuestionSearch"
+              class="assistant-recommendation-search"
+              :prefix-icon="Search"
+              placeholder="搜索推荐问题"
+              clearable
+            />
             <div
               v-if="recommendedQuestionsQuery.isLoading.value"
               class="assistant-recommendation-loading"
@@ -470,7 +486,7 @@ function formatTime(value: string): string {
             </div>
             <div v-else class="assistant-recommendations">
               <button
-                v-for="item in recommendedQuestions"
+                v-for="item in filteredRecommendedQuestions"
                 :key="item.id"
                 type="button"
                 @click="useSuggestion(item.question)"
@@ -480,8 +496,14 @@ function formatTime(value: string): string {
               </button>
             </div>
             <el-empty
-              v-if="!recommendedQuestionsQuery.isLoading.value && !recommendedQuestions.length"
-              description="当前知识库暂无已审核问题，请直接输入客户问题"
+              v-if="
+                !recommendedQuestionsQuery.isLoading.value && !filteredRecommendedQuestions.length
+              "
+              :description="
+                recommendedQuestions.length
+                  ? '没有匹配的推荐问题'
+                  : '当前知识库暂无已审核问题，请直接输入客户问题'
+              "
               :image-size="58"
             />
           </section>
