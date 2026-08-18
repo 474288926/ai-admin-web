@@ -35,6 +35,19 @@ npm install
 npm run dev
 ```
 
+### 局域网联调
+
+开发服务器已配置为监听所有网卡。启动后，将终端输出的 `Network` 地址发给同事，
+例如：
+
+```text
+http://192.168.5.72:5173/login
+```
+
+同事的电脑需要与本机处于同一局域网，并使用本机当前 IPv4 地址访问，不能使用
+`localhost:5173` 或 `127.0.0.1:5173`。前端 `/api` 请求通过 Vite 代理转发到本机
+后端 `http://127.0.0.1:3000`，因此后端也必须保持运行。
+
 ### Type-Check, Compile and Minify for Production
 
 ```sh
