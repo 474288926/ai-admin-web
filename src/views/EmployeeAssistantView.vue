@@ -24,6 +24,7 @@ import AiUsageBadge from '@/components/AiUsageBadge.vue'
 import { ApiError } from '@/services/api/client'
 import * as assistantApi from '@/services/api/assistant'
 import { budgetDecisionMessage, providerFailoverMessage } from '@/services/ai-usage'
+import * as evaluationApi from '@/services/api/evaluations'
 import * as knowledgeBaseApi from '@/services/api/knowledge-bases'
 import { useAuthStore } from '@/stores/auth'
 import type { Citation, Conversation, ConversationMessage, FeedbackRating } from '@/types/assistant'
@@ -45,6 +46,12 @@ const knowledgeBasesQuery = useQuery({
   queryFn: () => knowledgeBaseApi.listKnowledgeBases(1, 100),
 })
 const knowledgeBases = computed(() => knowledgeBasesQuery.data.value?.items ?? [])
+const recommendedQuestionsQuery = useQuery({
+  queryKey: computed(() => ['recommended-questions', selectedKnowledgeBaseId.value]),
+  queryFn: () => evaluationApi.listRecommendedQuestions(selectedKnowledgeBaseId.value),
+  enabled: computed(() => Boolean(selectedKnowledgeBaseId.value)),
+})
+const recommendedQuestions = computed(() => recommendedQuestionsQuery.data.value?.items ?? [])
 const selectedKnowledgeBase = computed(
   () => knowledgeBases.value.find((item) => item.id === selectedKnowledgeBaseId.value) ?? null,
 )
@@ -109,12 +116,6 @@ const feedbackMutation = useMutation({
       reason,
     }),
 })
-
-const suggestions = [
-  { title: '制度查询', prompt: '公司年假如何申请，需要提前多久？' },
-  { title: '产品说明', prompt: '请说明这个产品的适用范围和使用限制。' },
-  { title: '操作指引', prompt: '请按顺序列出操作步骤和禁止事项。' },
-]
 
 watch(
   knowledgeBases,
@@ -365,20 +366,31 @@ function formatTime(value: string): string {
             <span class="eyebrow">TRUSTED KNOWLEDGE</span>
             <h1>有问题，查知识。</h1>
             <p>查询内部制度、产品文档与操作手册。回答会附上文档来源，资料不足时明确说明。</p>
-            <div class="employee-suggestions">
+            <div
+              v-if="recommendedQuestionsQuery.isLoading.value"
+              class="employee-recommendation-loading"
+            >
+              正在加载推荐问题
+            </div>
+            <div v-else class="employee-suggestions">
               <button
-                v-for="item in suggestions"
-                :key="item.title"
+                v-for="item in recommendedQuestions"
+                :key="item.id"
                 type="button"
-                @click="draft = item.prompt"
+                @click="draft = item.question"
               >
                 <el-icon><Document /></el-icon
                 ><span
-                  ><strong>{{ item.title }}</strong
-                  ><small>{{ item.prompt }}</small></span
+                  ><strong>{{ scenarioLabel(item.scenario) }}</strong
+                  ><small>{{ item.question }}</small></span
                 >
               </button>
             </div>
+            <el-empty
+              v-if="!recommendedQuestionsQuery.isLoading.value && !recommendedQuestions.length"
+              description="当前知识库暂无已审核问题，请直接输入问题"
+              :image-size="58"
+            />
           </section>
 
           <article

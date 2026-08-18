@@ -3,6 +3,7 @@ import { z } from 'zod'
 import type {
   EvaluationComparison,
   EvaluationImportValidation,
+  RecommendedQuestions,
   EvaluationRun,
   EvaluationSuite,
   PaginatedEvaluations,
@@ -20,6 +21,21 @@ const severitySchema = z.enum(['NORMAL', 'HIGH', 'CRITICAL'])
 const runStatusSchema = z.enum(['PENDING', 'RUNNING', 'COMPLETED', 'FAILED', 'CANCELLED'])
 const caseStatusSchema = z.enum(['PENDING', 'RUNNING', 'PASSED', 'FAILED', 'ERROR', 'CANCELLED'])
 const jsonRecordSchema = z.record(z.string(), z.unknown())
+const recommendedQuestionSchema = z.object({
+  id: z.uuid(),
+  externalId: z.string(),
+  scenario: z.string(),
+  question: z.string(),
+  suiteId: z.uuid(),
+  suiteName: z.string(),
+  suiteVersion: z.number().int().positive(),
+})
+const recommendedQuestionsSchema = z.object({
+  suiteId: z.uuid().nullable(),
+  suiteName: z.string().nullable(),
+  suiteVersion: z.number().int().positive().nullable(),
+  items: z.array(recommendedQuestionSchema),
+})
 
 export const evaluationSuiteSchema = z.object({
   id: z.uuid(),
@@ -123,6 +139,15 @@ export async function listEvaluationSuites(
     `/knowledge-bases/${knowledgeBaseId}/evaluation-suites?${params}`,
   )
   return z.object({ items: z.array(evaluationSuiteSchema), meta: paginationSchema }).parse(result)
+}
+
+export async function listRecommendedQuestions(
+  knowledgeBaseId: string,
+): Promise<RecommendedQuestions> {
+  const result = await apiRequest<unknown>(
+    `/knowledge-bases/${knowledgeBaseId}/evaluation-suites/recommended`,
+  )
+  return recommendedQuestionsSchema.parse(result)
 }
 
 export async function listEvaluationRuns(

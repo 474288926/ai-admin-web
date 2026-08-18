@@ -3559,6 +3559,11 @@ input {
   font-size: 12px;
   line-height: 1.8;
 }
+.employee-recommendation-loading {
+  padding: 18px 0;
+  color: #8a96a8;
+  font-size: 11px;
+}
 .employee-suggestions {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -4030,8 +4035,35 @@ input {
   font-size: 12px;
   line-height: 1.7;
 }
-.assistant-welcome > button {
-  margin: 5px 0;
+.assistant-recommendation-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin: 2px 0 5px;
+  color: #5d6d84;
+  font-size: 11px;
+  text-align: left;
+}
+.assistant-recommendation-head small {
+  overflow: hidden;
+  color: #9aa6b8;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.assistant-recommendation-loading {
+  padding: 20px 0;
+  color: #8a96a8;
+  font-size: 11px;
+}
+.assistant-recommendations {
+  display: grid;
+  gap: 8px;
+}
+.assistant-recommendations button {
+  display: grid;
+  gap: 4px;
+  width: 100%;
   padding: 11px 15px;
   border: 1px solid #e0e6ef;
   border-radius: 9px;
@@ -4040,10 +4072,20 @@ input {
   background: #fff;
   cursor: pointer;
 }
-.assistant-welcome > button:hover {
+.assistant-recommendations button:hover {
   border-color: #9bb9eb;
   color: #2e62b8;
   background: #f7faff;
+}
+.assistant-recommendations button > span {
+  color: #8a96a8;
+  font-size: 10px;
+}
+.assistant-recommendations button > strong {
+  color: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.55;
 }
 .assistant-message {
   display: flex;
