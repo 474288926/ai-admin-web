@@ -23,6 +23,7 @@ import AiUsageBadge from '@/components/AiUsageBadge.vue'
 import { ApiError } from '@/services/api/client'
 import * as assistantApi from '@/services/api/assistant'
 import { budgetDecisionMessage, providerFailoverMessage } from '@/services/ai-usage'
+import * as evaluationApi from '@/services/api/evaluations'
 import * as knowledgeBaseApi from '@/services/api/knowledge-bases'
 import {
   buildTicketEscalationDraft,
@@ -64,6 +65,13 @@ const knowledgeBasesQuery = useQuery({
   queryFn: () => knowledgeBaseApi.listKnowledgeBases(1, 100),
 })
 const knowledgeBases = computed(() => knowledgeBasesQuery.data.value?.items ?? [])
+
+const recommendedQuestionsQuery = useQuery({
+  queryKey: computed(() => ['recommended-questions', selectedKnowledgeBaseId.value]),
+  queryFn: () => evaluationApi.listRecommendedQuestions(selectedKnowledgeBaseId.value),
+  enabled: computed(() => Boolean(selectedKnowledgeBaseId.value)),
+})
+const recommendedQuestions = computed(() => recommendedQuestionsQuery.data.value?.items ?? [])
 
 const conversationsQuery = useQuery({
   queryKey: ['assistant-conversations'],
@@ -125,12 +133,6 @@ const feedbackMutation = useMutation({
       comment: input.comment,
     }),
 })
-
-const promptSuggestions = [
-  '客户反馈设备无法联网，我应该先让客户检查哪些项目？',
-  '请给出退换货流程的客服回复话术和内部操作步骤。',
-  '这个问题需要升级人工或二线支持吗？判断条件是什么？',
-]
 
 const feedbackReasons: Array<{ value: FeedbackReason; label: string }> = [
   { value: 'INCORRECT', label: '回答错误' },
@@ -454,14 +456,34 @@ function formatTime(value: string): string {
             </div>
             <h3>今天需要辅助处理什么问题？</h3>
             <p>描述客户现象或业务问题，我会区分对客话术和内部操作，并标注引用依据。</p>
-            <button
-              v-for="item in promptSuggestions"
-              :key="item"
-              type="button"
-              @click="useSuggestion(item)"
+            <div class="assistant-recommendation-head">
+              <strong>已审核推荐问题</strong>
+              <small v-if="recommendedQuestionsQuery.data.value?.suiteName"
+                >{{ recommendedQuestionsQuery.data.value.suiteName }} · 已审核</small
+              >
+            </div>
+            <div
+              v-if="recommendedQuestionsQuery.isLoading.value"
+              class="assistant-recommendation-loading"
             >
-              {{ item }}
-            </button>
+              正在加载推荐问题
+            </div>
+            <div v-else class="assistant-recommendations">
+              <button
+                v-for="item in recommendedQuestions"
+                :key="item.id"
+                type="button"
+                @click="useSuggestion(item.question)"
+              >
+                <span>{{ scenarioLabel(item.scenario) }}</span>
+                <strong>{{ item.question }}</strong>
+              </button>
+            </div>
+            <el-empty
+              v-if="!recommendedQuestionsQuery.isLoading.value && !recommendedQuestions.length"
+              description="当前知识库暂无已审核问题，请直接输入客户问题"
+              :image-size="58"
+            />
           </section>
 
           <article

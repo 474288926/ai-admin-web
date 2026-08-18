@@ -10,6 +10,23 @@ export type EvaluationCaseStatus =
   | 'CANCELLED'
 export type EvaluationCaseSeverity = 'NORMAL' | 'HIGH' | 'CRITICAL'
 
+export interface RecommendedQuestion {
+  id: string
+  externalId: string
+  scenario: string
+  question: string
+  suiteId: string
+  suiteName: string
+  suiteVersion: number
+}
+
+export interface RecommendedQuestions {
+  suiteId: string | null
+  suiteName: string | null
+  suiteVersion: number | null
+  items: RecommendedQuestion[]
+}
+
 export interface EvaluationSuite {
   id: string
   knowledgeBaseId: string
