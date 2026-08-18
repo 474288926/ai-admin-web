@@ -36,6 +36,7 @@ const selectedKnowledgeBaseId = ref('')
 const selectedConversationId = ref('')
 const selectedModelId = ref('')
 const conversationSearch = ref('')
+const recommendedQuestionSearch = ref('')
 const draft = ref('')
 const evidenceDrawerVisible = ref(false)
 const selectedCitation = ref<Citation | null>(null)
@@ -52,6 +53,13 @@ const recommendedQuestionsQuery = useQuery({
   enabled: computed(() => Boolean(selectedKnowledgeBaseId.value)),
 })
 const recommendedQuestions = computed(() => recommendedQuestionsQuery.data.value?.items ?? [])
+const filteredRecommendedQuestions = computed(() => {
+  const keyword = recommendedQuestionSearch.value.trim().toLowerCase()
+  if (!keyword) return recommendedQuestions.value
+  return recommendedQuestions.value.filter((item) =>
+    `${item.question} ${scenarioLabel(item.scenario)}`.toLowerCase().includes(keyword),
+  )
+})
 const selectedKnowledgeBase = computed(
   () => knowledgeBases.value.find((item) => item.id === selectedKnowledgeBaseId.value) ?? null,
 )
@@ -129,6 +137,7 @@ watch(
 watch(selectedKnowledgeBaseId, () => {
   selectedConversationId.value = ''
   selectedCitation.value = null
+  recommendedQuestionSearch.value = ''
 })
 
 function getErrorMessage(error: unknown): string {
@@ -366,6 +375,19 @@ function formatTime(value: string): string {
             <span class="eyebrow">TRUSTED KNOWLEDGE</span>
             <h1>有问题，查知识。</h1>
             <p>查询内部制度、产品文档与操作手册。回答会附上文档来源，资料不足时明确说明。</p>
+            <div class="employee-recommendation-head">
+              <strong>已审核推荐问题</strong>
+              <small v-if="recommendedQuestionsQuery.data.value?.suiteName"
+                >{{ recommendedQuestionsQuery.data.value.suiteName }} · 已审核</small
+              >
+            </div>
+            <el-input
+              v-model="recommendedQuestionSearch"
+              class="employee-recommendation-search"
+              :prefix-icon="Search"
+              placeholder="搜索推荐问题"
+              clearable
+            />
             <div
               v-if="recommendedQuestionsQuery.isLoading.value"
               class="employee-recommendation-loading"
@@ -374,7 +396,7 @@ function formatTime(value: string): string {
             </div>
             <div v-else class="employee-suggestions">
               <button
-                v-for="item in recommendedQuestions"
+                v-for="item in filteredRecommendedQuestions"
                 :key="item.id"
                 type="button"
                 @click="draft = item.question"
@@ -387,8 +409,14 @@ function formatTime(value: string): string {
               </button>
             </div>
             <el-empty
-              v-if="!recommendedQuestionsQuery.isLoading.value && !recommendedQuestions.length"
-              description="当前知识库暂无已审核问题，请直接输入问题"
+              v-if="
+                !recommendedQuestionsQuery.isLoading.value && !filteredRecommendedQuestions.length
+              "
+              :description="
+                recommendedQuestions.length
+                  ? '没有匹配的推荐问题'
+                  : '当前知识库暂无已审核问题，请直接输入问题'
+              "
               :image-size="58"
             />
           </section>
