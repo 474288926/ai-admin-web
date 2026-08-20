@@ -9,6 +9,7 @@ import {
   Fold,
   Histogram,
   House,
+  Menu as MenuIcon,
   Monitor,
   OfficeBuilding,
   Operation,
@@ -27,6 +28,7 @@ const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 const collapsed = ref(false)
+const mobileNavigationOpen = ref(false)
 
 const pageTitle = computed(() => String(route.meta.title ?? '运营管理'))
 const userName = computed(() => authStore.user?.name || authStore.user?.email || '知识管理员')
@@ -90,11 +92,28 @@ async function handleLogout(): Promise<void> {
   await authStore.logout()
   await router.replace({ name: 'login' })
 }
+
+function openMobileNavigation(): void {
+  collapsed.value = false
+  mobileNavigationOpen.value = true
+}
+
+function closeMobileNavigation(): void {
+  mobileNavigationOpen.value = false
+}
 </script>
 
 <template>
-  <div class="app-shell" :class="{ 'is-collapsed': collapsed }">
-    <aside class="app-sidebar">
+  <div
+    class="app-shell"
+    :class="{ 'is-collapsed': collapsed }"
+    @keydown.esc="closeMobileNavigation"
+  >
+    <aside
+      id="app-navigation"
+      class="app-sidebar"
+      :class="{ 'is-mobile-open': mobileNavigationOpen }"
+    >
       <div class="brand">
         <span class="brand-mark">知</span>
         <div v-if="!collapsed" class="brand-copy">
@@ -103,7 +122,13 @@ async function handleLogout(): Promise<void> {
         </div>
       </div>
 
-      <el-menu :default-active="route.path" router class="app-menu" :collapse="collapsed">
+      <el-menu
+        :default-active="route.path"
+        router
+        class="app-menu"
+        :collapse="collapsed"
+        @select="closeMobileNavigation"
+      >
         <el-menu-item v-for="item in visibleMenuItems" :key="item.path" :index="item.path">
           <el-icon><component :is="item.icon" /></el-icon>
           <template #title>{{ item.label }}</template>
@@ -116,9 +141,28 @@ async function handleLogout(): Promise<void> {
       </button>
     </aside>
 
+    <button
+      v-if="mobileNavigationOpen"
+      class="mobile-navigation-backdrop"
+      type="button"
+      aria-label="关闭导航"
+      @click="closeMobileNavigation"
+    />
+
     <div class="app-main">
       <header class="app-header">
-        <div>
+        <button
+          class="mobile-menu-button"
+          type="button"
+          aria-label="打开导航"
+          aria-controls="app-navigation"
+          :aria-expanded="mobileNavigationOpen"
+          title="打开导航"
+          @click="openMobileNavigation"
+        >
+          <el-icon><MenuIcon /></el-icon>
+        </button>
+        <div class="app-header-title">
           <span class="eyebrow">KNOWLEDGE OPERATIONS</span>
           <h1>{{ pageTitle }}</h1>
         </div>

@@ -686,7 +686,9 @@ function formatDate(value: string): string {
 
     <el-dialog
       v-model="runtimeDialogVisible"
+      class="runtime-profile-dialog"
       title="知识库运行配置"
+      top="12px"
       width="min(720px, 94vw)"
       destroy-on-close
     >
@@ -812,12 +814,28 @@ function formatDate(value: string): string {
               />
             </el-form-item>
           </div>
-          <div class="runtime-effective-values">
-            实际生效：模型 {{ runtimeProfile.effective.aiDefaultModelId }} · Prompt
-            {{ runtimeProfile.effective.ragPromptVersion }} · 最低证据分
-            {{ runtimeProfile.effective.rerankMinimumEvidenceScore }} · 强证据分
-            {{ runtimeProfile.effective.rerankStrongEvidenceScore }} · 向量阈值
-            {{ runtimeProfile.effective.retrievalMinimumSimilarity }}
+          <div class="runtime-effective-values" aria-label="当前有效运行配置">
+            <span class="runtime-effective-title">当前有效值</span>
+            <span class="runtime-effective-item">
+              <span>模型</span>
+              <strong>{{ runtimeProfile.effective.aiDefaultModelId }}</strong>
+            </span>
+            <span class="runtime-effective-item">
+              <span>Prompt</span>
+              <strong>{{ runtimeProfile.effective.ragPromptVersion }}</strong>
+            </span>
+            <span class="runtime-effective-item">
+              <span>最低证据分</span>
+              <strong>{{ runtimeProfile.effective.rerankMinimumEvidenceScore }}</strong>
+            </span>
+            <span class="runtime-effective-item">
+              <span>强证据分</span>
+              <strong>{{ runtimeProfile.effective.rerankStrongEvidenceScore }}</strong>
+            </span>
+            <span class="runtime-effective-item">
+              <span>向量阈值</span>
+              <strong>{{ runtimeProfile.effective.retrievalMinimumSimilarity }}</strong>
+            </span>
           </div>
           <div class="runtime-values-table" aria-label="运行配置来源对照">
             <div class="runtime-values-row runtime-values-header">
@@ -836,13 +854,15 @@ function formatDate(value: string): string {
         </el-form>
       </div>
       <template #footer>
-        <el-button @click="runtimeDialogVisible = false">取消</el-button>
-        <el-button :icon="Refresh" :disabled="runtimeSaving" @click="restoreRuntimeInheritance">
-          恢复系统继承
-        </el-button>
-        <el-button type="primary" :loading="runtimeSaving" @click="saveRuntimeProfile"
-          >保存运行配置</el-button
-        >
+        <div class="runtime-dialog-actions">
+          <el-button @click="runtimeDialogVisible = false">取消</el-button>
+          <el-button :icon="Refresh" :disabled="runtimeSaving" @click="restoreRuntimeInheritance">
+            恢复系统继承
+          </el-button>
+          <el-button type="primary" :loading="runtimeSaving" @click="saveRuntimeProfile">
+            保存运行配置
+          </el-button>
+        </div>
       </template>
     </el-dialog>
   </div>
@@ -868,12 +888,53 @@ function formatDate(value: string): string {
 }
 
 .runtime-effective-values {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 18px;
   padding: 12px 14px;
   border: 1px solid var(--el-border-color-lighter);
   background: var(--el-fill-color-light);
   color: var(--el-text-color-secondary);
   font-size: 13px;
   line-height: 1.6;
+}
+
+.runtime-effective-title {
+  grid-column: 1 / -1;
+  color: var(--el-text-color-primary);
+  font-weight: 600;
+}
+
+.runtime-effective-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  min-width: 0;
+}
+
+.runtime-effective-item > span {
+  color: var(--el-text-color-secondary);
+  white-space: nowrap;
+}
+
+.runtime-effective-item strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--el-text-color-primary);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.runtime-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.runtime-dialog-actions .el-button + .el-button {
+  margin-left: 0;
 }
 
 .runtime-values-table {
@@ -912,6 +973,24 @@ function formatDate(value: string): string {
 @media (max-width: 640px) {
   .runtime-profile-grid {
     grid-template-columns: 1fr;
+  }
+
+  .runtime-effective-values {
+    grid-template-columns: 1fr;
+  }
+
+  .runtime-effective-title {
+    grid-column: auto;
+  }
+
+  .runtime-dialog-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .runtime-dialog-actions .el-button {
+    width: 100%;
+    margin-left: 0;
   }
 }
 </style>
