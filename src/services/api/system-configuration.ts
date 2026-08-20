@@ -29,6 +29,7 @@ export const systemConfigurationSchema = z.object({
       ragPromptVersion: z.string().min(1),
       aiMaxOutputTokens: z.number().int().min(1).max(32768),
       aiContextMessageLimit: z.number().int().min(1).max(200),
+      retrievalMinimumSimilarity: z.number().min(-1).max(1),
       retrievalKeywordMinimumScore: z.number().min(0).max(1),
       rerankMinimumEvidenceScore: z.number().min(0).max(1),
       rerankStrongEvidenceScore: z.number().min(0).max(1),
@@ -74,6 +75,7 @@ export const systemConfigurationSchema = z.object({
       driver: z.string().min(1),
       mode: z.string().min(1),
       keywordCandidateMultiplier: nonnegativeInteger,
+      minimumSimilarity: z.number().min(-1).max(1),
       keywordMinimumScore: z.number().min(0).max(1),
       rrfK: nonnegativeInteger,
       queryRewriteAiEnabled: z.boolean(),
@@ -87,6 +89,13 @@ export const systemConfigurationSchema = z.object({
     .refine((value) => value.strongEvidenceScore > value.minimumEvidenceScore),
   rag: z.object({
     promptVersion: z.string().min(1),
+    availablePromptVersions: z.array(
+      z.object({
+        id: z.string().min(1),
+        label: z.string().min(1),
+        description: z.string().min(1),
+      }),
+    ),
     structuredResponseEnabled: z.boolean(),
     reasoningEffort: z.string().min(1),
     customerSafetyEnabled: z.boolean(),
@@ -159,6 +168,7 @@ export const systemConfigurationHistorySchema = z.object({
         ragPromptVersion: configurationStringValueChangeSchema.optional(),
         aiMaxOutputTokens: configurationNumberValueChangeSchema.optional(),
         aiContextMessageLimit: configurationNumberValueChangeSchema.optional(),
+        retrievalMinimumSimilarity: configurationNumberValueChangeSchema.optional(),
         retrievalKeywordMinimumScore: configurationNumberValueChangeSchema.optional(),
         rerankMinimumEvidenceScore: configurationNumberValueChangeSchema.optional(),
         rerankStrongEvidenceScore: configurationNumberValueChangeSchema.optional(),

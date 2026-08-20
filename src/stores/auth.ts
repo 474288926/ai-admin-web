@@ -32,6 +32,13 @@ export const useAuthStore = defineStore('auth', () => {
     hydrated.value = true
   }
 
+  function expireSession(): void {
+    resetAccessProfile()
+    session.value = null
+    clearSession()
+    hydrated.value = true
+  }
+
   async function login(email: string, password: string): Promise<void> {
     const nextSession = await authApi.login(email, password)
     resetAccessProfile()
@@ -110,6 +117,7 @@ export const useAuthStore = defineStore('auth', () => {
     accessProfileLoaded,
     accessProfileError,
     hydrate,
+    expireSession,
     ensureAccessProfile,
     login,
     completeOidcLogin,

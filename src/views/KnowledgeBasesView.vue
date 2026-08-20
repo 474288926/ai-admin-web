@@ -11,6 +11,7 @@ import {
   Plus,
   Refresh,
   Search,
+  Setting,
   UserFilled,
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
@@ -23,6 +24,8 @@ import { useAuthStore } from '@/stores/auth'
 import type {
   CreateKnowledgeBaseInput,
   KnowledgeBase,
+  KnowledgeBaseRuntimeValues,
+  KnowledgeBaseRuntimeProfile,
   KnowledgeBaseVisibility,
   UpdateKnowledgeBaseInput,
 } from '@/types/knowledge-base'
@@ -33,6 +36,32 @@ interface KnowledgeBaseForm {
   organizationId: string
   visibility: KnowledgeBaseVisibility
 }
+
+interface RuntimeProfileForm {
+  revision: number
+  profileType: string
+  aiDefaultModelId: string
+  ragPromptVersion: string
+  aiMaxOutputTokens: number | null
+  aiContextMessageLimit: number | null
+  retrievalMinimumSimilarity: number | null
+  retrievalKeywordMinimumScore: number | null
+  rerankMinimumEvidenceScore: number | null
+  rerankStrongEvidenceScore: number | null
+}
+
+type RuntimeField = keyof KnowledgeBaseRuntimeValues
+
+const runtimeFields: Array<{ key: RuntimeField; label: string }> = [
+  { key: 'aiDefaultModelId', label: '生成模型 ID' },
+  { key: 'ragPromptVersion', label: 'Prompt 版本' },
+  { key: 'aiMaxOutputTokens', label: '最大输出 Token' },
+  { key: 'aiContextMessageLimit', label: '历史上下文消息数' },
+  { key: 'retrievalMinimumSimilarity', label: '向量最低相似度' },
+  { key: 'retrievalKeywordMinimumScore', label: '关键词最低召回分' },
+  { key: 'rerankMinimumEvidenceScore', label: '最低证据分' },
+  { key: 'rerankStrongEvidenceScore', label: '强证据分' },
+]
 
 const PAGE_SIZE = 20
 const router = useRouter()
@@ -49,6 +78,23 @@ const form = reactive<KnowledgeBaseForm>({
   description: '',
   organizationId: '',
   visibility: 'PRIVATE',
+})
+const runtimeDialogVisible = ref(false)
+const runtimeLoading = ref(false)
+const runtimeSaving = ref(false)
+const runtimeKnowledgeBase = ref<KnowledgeBase | null>(null)
+const runtimeProfile = ref<KnowledgeBaseRuntimeProfile | null>(null)
+const runtimeForm = reactive<RuntimeProfileForm>({
+  revision: 0,
+  profileType: 'general',
+  aiDefaultModelId: '',
+  ragPromptVersion: '',
+  aiMaxOutputTokens: null,
+  aiContextMessageLimit: null,
+  retrievalMinimumSimilarity: null,
+  retrievalKeywordMinimumScore: null,
+  rerankMinimumEvidenceScore: null,
+  rerankStrongEvidenceScore: null,
 })
 
 const rules: FormRules<KnowledgeBaseForm> = {
@@ -132,6 +178,23 @@ function getErrorMessage(error: unknown): string {
   return error instanceof ApiError ? error.message : '操作失败，请稍后重试'
 }
 
+function formatRuntimeValue(value: unknown): string {
+  return value === null || value === undefined || value === '' ? '未设置' : String(value)
+}
+
+function runtimeFieldState(field: RuntimeField): {
+  override: unknown
+  inherited: unknown
+  effective: unknown
+} {
+  const profile = runtimeProfile.value
+  return {
+    override: profile?.overrides[field],
+    inherited: profile?.systemDefaults[field],
+    effective: profile?.effective[field],
+  }
+}
+
 function resetForm(): void {
   editingId.value = null
   form.name = ''
@@ -162,6 +225,120 @@ function openEdit(row: Record<string, unknown>): void {
   form.organizationId = item.organizationId ?? ''
   form.visibility = item.visibility
   dialogVisible.value = true
+}
+
+async function loadRuntimeProfile(): Promise<void> {
+  const item = runtimeKnowledgeBase.value
+  if (!item) return
+  runtimeLoading.value = true
+  try {
+    const profile = await knowledgeBaseApi.getKnowledgeBaseRuntimeProfile(item.id)
+    runtimeProfile.value = profile
+    runtimeForm.revision = profile.revision
+    runtimeForm.profileType = profile.profileType
+    runtimeForm.aiDefaultModelId = profile.overrides.aiDefaultModelId ?? ''
+    runtimeForm.ragPromptVersion = profile.overrides.ragPromptVersion ?? ''
+    runtimeForm.aiMaxOutputTokens = profile.overrides.aiMaxOutputTokens
+    runtimeForm.aiContextMessageLimit = profile.overrides.aiContextMessageLimit
+    runtimeForm.retrievalMinimumSimilarity = profile.overrides.retrievalMinimumSimilarity
+    runtimeForm.retrievalKeywordMinimumScore = profile.overrides.retrievalKeywordMinimumScore
+    runtimeForm.rerankMinimumEvidenceScore = profile.overrides.rerankMinimumEvidenceScore
+    runtimeForm.rerankStrongEvidenceScore = profile.overrides.rerankStrongEvidenceScore
+  } catch (error) {
+    ElMessage.error(getErrorMessage(error))
+  } finally {
+    runtimeLoading.value = false
+  }
+}
+
+async function openRuntimeProfile(row: Record<string, unknown>): Promise<void> {
+  const item = row as unknown as KnowledgeBase
+  if (!canManageKnowledgeBase(item)) {
+    ElMessage.warning('你没有管理此知识库的权限')
+    return
+  }
+  runtimeKnowledgeBase.value = item
+  runtimeDialogVisible.value = true
+  await loadRuntimeProfile()
+}
+
+async function restoreRuntimeInheritance(): Promise<void> {
+  try {
+    await ElMessageBox.confirm(
+      '将清除本知识库的全部运行配置覆盖值，恢复继承系统默认配置。',
+      '恢复系统继承',
+      { type: 'warning', confirmButtonText: '恢复继承', cancelButtonText: '取消' },
+    )
+  } catch {
+    return
+  }
+
+  runtimeForm.aiDefaultModelId = ''
+  runtimeForm.ragPromptVersion = ''
+  runtimeForm.aiMaxOutputTokens = null
+  runtimeForm.aiContextMessageLimit = null
+  runtimeForm.retrievalMinimumSimilarity = null
+  runtimeForm.retrievalKeywordMinimumScore = null
+  runtimeForm.rerankMinimumEvidenceScore = null
+  runtimeForm.rerankStrongEvidenceScore = null
+  await saveRuntimeProfile()
+}
+
+async function saveRuntimeProfile(): Promise<void> {
+  const knowledgeBase = runtimeKnowledgeBase.value
+  if (!knowledgeBase) return
+  const minimum =
+    runtimeForm.rerankMinimumEvidenceScore ??
+    runtimeProfile.value?.effective.rerankMinimumEvidenceScore ??
+    0
+  const strong =
+    runtimeForm.rerankStrongEvidenceScore ??
+    runtimeProfile.value?.effective.rerankStrongEvidenceScore ??
+    0
+  if (strong <= minimum) {
+    ElMessage.warning('强证据分必须高于最低证据分')
+    return
+  }
+
+  runtimeSaving.value = true
+  try {
+    const profile = await knowledgeBaseApi.updateKnowledgeBaseRuntimeProfile(knowledgeBase.id, {
+      revision: runtimeForm.revision,
+      profileType: runtimeForm.profileType,
+      aiDefaultModelId: runtimeForm.aiDefaultModelId.trim() || null,
+      ragPromptVersion: runtimeForm.ragPromptVersion.trim() || null,
+      aiMaxOutputTokens: runtimeForm.aiMaxOutputTokens,
+      aiContextMessageLimit: runtimeForm.aiContextMessageLimit,
+      retrievalMinimumSimilarity: runtimeForm.retrievalMinimumSimilarity,
+      retrievalKeywordMinimumScore: runtimeForm.retrievalKeywordMinimumScore,
+      rerankMinimumEvidenceScore: runtimeForm.rerankMinimumEvidenceScore,
+      rerankStrongEvidenceScore: runtimeForm.rerankStrongEvidenceScore,
+    })
+    runtimeProfile.value = profile
+    runtimeForm.revision = profile.revision
+    ElMessage.success('知识库运行配置已更新')
+    runtimeDialogVisible.value = false
+  } catch (error) {
+    if (
+      error instanceof ApiError &&
+      error.code === 'KNOWLEDGE_BASE_RUNTIME_PROFILE_REVISION_CONFLICT'
+    ) {
+      try {
+        await ElMessageBox.confirm(
+          '配置已被其他管理员更新，请重新加载最新配置后再保存。',
+          '配置冲突',
+          { type: 'warning', confirmButtonText: '重新加载', cancelButtonText: '关闭' },
+        )
+        await loadRuntimeProfile()
+      } catch {
+        // 用户关闭提示时保留当前编辑内容，避免无提示丢失输入。
+      }
+    } else {
+      ElMessage.error(getErrorMessage(error))
+    }
+  } finally {
+    runtimeSaving.value = false
+  }
 }
 
 async function saveKnowledgeBase(): Promise<void> {
@@ -409,6 +586,9 @@ function formatDate(value: string): string {
                       <el-dropdown-item :icon="EditPen" @click="openEdit(row)"
                         >编辑</el-dropdown-item
                       >
+                      <el-dropdown-item :icon="Setting" @click="openRuntimeProfile(row)"
+                        >运行配置</el-dropdown-item
+                      >
                       <el-dropdown-item
                         :icon="Delete"
                         divided
@@ -503,5 +683,235 @@ function formatDate(value: string): string {
         }}</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog
+      v-model="runtimeDialogVisible"
+      title="知识库运行配置"
+      width="min(720px, 94vw)"
+      destroy-on-close
+    >
+      <div v-loading="runtimeLoading" class="runtime-profile-form">
+        <el-alert
+          v-if="runtimeProfile"
+          :title="
+            runtimeProfile.hasKnowledgeBaseOverrides
+              ? `当前使用知识库专属策略 · ${runtimeProfile.profileType}`
+              : '当前继承系统默认策略'
+          "
+          :description="
+            runtimeProfile.hasKnowledgeBaseOverrides
+              ? '本知识库的调整只会影响本知识库的问答和评测。'
+              : '只填写需要差异化的字段，留空即可继续继承系统默认值。'
+          "
+          :type="runtimeProfile.hasKnowledgeBaseOverrides ? 'success' : 'info'"
+          :closable="false"
+          show-icon
+        />
+        <el-form v-if="runtimeProfile" label-position="top">
+          <div class="runtime-profile-grid">
+            <el-form-item label="知识库类型">
+              <el-select v-model="runtimeForm.profileType" class="form-full-width">
+                <el-option label="通用知识库" value="general" />
+                <el-option label="产品文档" value="product" />
+                <el-option label="客服辅助" value="customer_service" />
+                <el-option label="制度政策" value="internal_policy" />
+                <el-option label="操作手册" value="operation_manual" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="生成模型 ID">
+              <el-input
+                v-model="runtimeForm.aiDefaultModelId"
+                clearable
+                placeholder="继承系统默认模型"
+              />
+            </el-form-item>
+            <el-form-item label="Prompt 版本">
+              <el-select
+                v-model="runtimeForm.ragPromptVersion"
+                clearable
+                class="form-full-width"
+                placeholder="继承系统默认 Prompt"
+              >
+                <el-option
+                  v-for="prompt in runtimeProfile.availablePromptVersions"
+                  :key="prompt.id"
+                  :label="prompt.label"
+                  :value="prompt.id"
+                >
+                  <span>{{ prompt.label }}</span>
+                  <small class="prompt-option-description">{{ prompt.description }}</small>
+                </el-option>
+              </el-select>
+            </el-form-item>
+            <el-form-item label="最大输出 Token">
+              <el-input-number
+                v-model="runtimeForm.aiMaxOutputTokens"
+                :min="1"
+                :max="32768"
+                controls-position="right"
+                class="form-full-width"
+                placeholder="继承默认值"
+              />
+            </el-form-item>
+            <el-form-item label="历史上下文消息数">
+              <el-input-number
+                v-model="runtimeForm.aiContextMessageLimit"
+                :min="1"
+                :max="200"
+                controls-position="right"
+                class="form-full-width"
+                placeholder="继承默认值"
+              />
+            </el-form-item>
+            <el-form-item label="关键词最低召回分">
+              <el-input-number
+                v-model="runtimeForm.retrievalKeywordMinimumScore"
+                :min="0"
+                :max="1"
+                :step="0.05"
+                :precision="3"
+                controls-position="right"
+                class="form-full-width"
+                placeholder="继承默认值"
+              />
+            </el-form-item>
+            <el-form-item label="向量最低相似度">
+              <el-input-number
+                v-model="runtimeForm.retrievalMinimumSimilarity"
+                :min="-1"
+                :max="1"
+                :step="0.05"
+                :precision="3"
+                controls-position="right"
+                class="form-full-width"
+                placeholder="继承默认值"
+              />
+            </el-form-item>
+            <el-form-item label="最低证据分">
+              <el-input-number
+                v-model="runtimeForm.rerankMinimumEvidenceScore"
+                :min="0"
+                :max="1"
+                :step="0.05"
+                :precision="3"
+                controls-position="right"
+                class="form-full-width"
+                placeholder="继承默认值"
+              />
+            </el-form-item>
+            <el-form-item label="强证据分">
+              <el-input-number
+                v-model="runtimeForm.rerankStrongEvidenceScore"
+                :min="0"
+                :max="1"
+                :step="0.05"
+                :precision="3"
+                controls-position="right"
+                class="form-full-width"
+                placeholder="继承默认值"
+              />
+            </el-form-item>
+          </div>
+          <div class="runtime-effective-values">
+            实际生效：模型 {{ runtimeProfile.effective.aiDefaultModelId }} · Prompt
+            {{ runtimeProfile.effective.ragPromptVersion }} · 最低证据分
+            {{ runtimeProfile.effective.rerankMinimumEvidenceScore }} · 强证据分
+            {{ runtimeProfile.effective.rerankStrongEvidenceScore }} · 向量阈值
+            {{ runtimeProfile.effective.retrievalMinimumSimilarity }}
+          </div>
+          <div class="runtime-values-table" aria-label="运行配置来源对照">
+            <div class="runtime-values-row runtime-values-header">
+              <span>配置项</span>
+              <span>知识库覆盖值</span>
+              <span>系统继承值</span>
+              <span>当前有效值</span>
+            </div>
+            <div v-for="field in runtimeFields" :key="field.key" class="runtime-values-row">
+              <span class="runtime-values-label">{{ field.label }}</span>
+              <span>{{ formatRuntimeValue(runtimeFieldState(field.key).override) }}</span>
+              <span>{{ formatRuntimeValue(runtimeFieldState(field.key).inherited) }}</span>
+              <strong>{{ formatRuntimeValue(runtimeFieldState(field.key).effective) }}</strong>
+            </div>
+          </div>
+        </el-form>
+      </div>
+      <template #footer>
+        <el-button @click="runtimeDialogVisible = false">取消</el-button>
+        <el-button :icon="Refresh" :disabled="runtimeSaving" @click="restoreRuntimeInheritance">
+          恢复系统继承
+        </el-button>
+        <el-button type="primary" :loading="runtimeSaving" @click="saveRuntimeProfile"
+          >保存运行配置</el-button
+        >
+      </template>
+    </el-dialog>
   </div>
 </template>
+
+<style scoped>
+.runtime-profile-form {
+  min-height: 180px;
+}
+
+.prompt-option-description {
+  display: block;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.runtime-profile-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 18px;
+  margin-top: 18px;
+}
+
+.runtime-effective-values {
+  padding: 12px 14px;
+  border: 1px solid var(--el-border-color-lighter);
+  background: var(--el-fill-color-light);
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.runtime-values-table {
+  margin-top: 16px;
+  overflow-x: auto;
+  border: 1px solid var(--el-border-color-lighter);
+}
+
+.runtime-values-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 1.2fr) repeat(3, minmax(120px, 1fr));
+  min-width: 620px;
+  gap: 12px;
+  align-items: center;
+  padding: 9px 12px;
+  border-top: 1px solid var(--el-border-color-lighter);
+  color: var(--el-text-color-regular);
+  font-size: 12px;
+}
+
+.runtime-values-row:first-child {
+  border-top: 0;
+}
+
+.runtime-values-header {
+  background: var(--el-fill-color-light);
+  color: var(--el-text-color-secondary);
+  font-weight: 600;
+}
+
+.runtime-values-label {
+  color: var(--el-text-color-primary);
+  font-weight: 500;
+}
+
+@media (max-width: 640px) {
+  .runtime-profile-grid {
+    grid-template-columns: 1fr;
+  }
+}
+</style>

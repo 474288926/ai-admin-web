@@ -21,13 +21,19 @@ import { useRouter } from 'vue-router'
 import AiModelSelector from '@/components/AiModelSelector.vue'
 import AiConversationUsage from '@/components/AiConversationUsage.vue'
 import AiUsageBadge from '@/components/AiUsageBadge.vue'
-import { ApiError } from '@/services/api/client'
 import * as assistantApi from '@/services/api/assistant'
 import { budgetDecisionMessage, providerFailoverMessage } from '@/services/ai-usage'
+import { getErrorMessage } from '@/services/error-feedback'
 import * as evaluationApi from '@/services/api/evaluations'
 import * as knowledgeBaseApi from '@/services/api/knowledge-bases'
 import { useAuthStore } from '@/stores/auth'
-import type { Citation, Conversation, ConversationMessage, FeedbackRating } from '@/types/assistant'
+import type {
+  Citation,
+  Conversation,
+  ConversationMessage,
+  FeedbackReason,
+  FeedbackRating,
+} from '@/types/assistant'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -41,6 +47,10 @@ const draft = ref('')
 const evidenceDrawerVisible = ref(false)
 const selectedCitation = ref<Citation | null>(null)
 const feedbackByMessage = ref<Record<string, FeedbackRating>>({})
+const feedbackDialogVisible = ref(false)
+const feedbackMessage = ref<ConversationMessage | null>(null)
+const feedbackReason = ref<FeedbackReason>('INCOMPLETE')
+const feedbackComment = ref('')
 
 const knowledgeBasesQuery = useQuery({
   queryKey: ['knowledge-bases', 'employee-options'],
@@ -113,17 +123,31 @@ const feedbackMutation = useMutation({
     messageId,
     rating,
     reason,
+    comment,
   }: {
     conversationId: string
     messageId: string
     rating: FeedbackRating
-    reason?: 'INCOMPLETE'
+    reason?: FeedbackReason
+    comment?: string
   }) =>
     assistantApi.upsertMessageFeedback(conversationId, messageId, {
       rating,
       reason,
+      comment,
     }),
 })
+
+const feedbackReasons: Array<{ value: FeedbackReason; label: string }> = [
+  { value: 'INCORRECT', label: '回答错误' },
+  { value: 'INCOMPLETE', label: '信息不完整' },
+  { value: 'INACCURATE_CITATION', label: '引用不准确' },
+  { value: 'SHOULD_HAVE_ANSWERED', label: '不应拒答' },
+  { value: 'SHOULD_HAVE_REFUSED', label: '应该拒答' },
+  { value: 'NOT_ACTIONABLE', label: '缺少可执行性' },
+  { value: 'EXPRESSION', label: '表达不清晰' },
+  { value: 'OTHER', label: '其他' },
+]
 
 watch(
   knowledgeBases,
@@ -139,10 +163,6 @@ watch(selectedKnowledgeBaseId, () => {
   selectedCitation.value = null
   recommendedQuestionSearch.value = ''
 })
-
-function getErrorMessage(error: unknown): string {
-  return error instanceof ApiError ? error.message : '操作失败，请稍后重试'
-}
 
 function newConversation(): void {
   selectedConversationId.value = ''
@@ -190,15 +210,43 @@ async function copyText(value: string): Promise<void> {
 
 async function rate(message: ConversationMessage, rating: FeedbackRating): Promise<void> {
   if (!selectedConversationId.value) return
+  if (rating === 'UNHELPFUL') {
+    feedbackMessage.value = message
+    feedbackReason.value = 'INCOMPLETE'
+    feedbackComment.value = ''
+    feedbackDialogVisible.value = true
+    return
+  }
   try {
     await feedbackMutation.mutateAsync({
       conversationId: selectedConversationId.value,
       messageId: message.id,
       rating,
-      ...(rating === 'UNHELPFUL' ? { reason: 'INCOMPLETE' as const } : {}),
     })
     feedbackByMessage.value[message.id] = rating
     ElMessage.success('感谢反馈')
+  } catch (error) {
+    ElMessage.error(getErrorMessage(error))
+  }
+}
+
+async function submitUnhelpfulFeedback(): Promise<void> {
+  if (!feedbackMessage.value || !selectedConversationId.value) return
+  if (feedbackReason.value === 'OTHER' && !feedbackComment.value.trim()) {
+    ElMessage.warning('选择其他原因时请填写备注')
+    return
+  }
+  try {
+    await feedbackMutation.mutateAsync({
+      conversationId: selectedConversationId.value,
+      messageId: feedbackMessage.value.id,
+      rating: 'UNHELPFUL',
+      reason: feedbackReason.value,
+      comment: feedbackComment.value.trim() || undefined,
+    })
+    feedbackByMessage.value[feedbackMessage.value.id] = 'UNHELPFUL'
+    feedbackDialogVisible.value = false
+    ElMessage.success('问题反馈已记录')
   } catch (error) {
     ElMessage.error(getErrorMessage(error))
   }
@@ -597,5 +645,43 @@ function formatTime(value: string): string {
         /><el-empty v-else description="该历史引用未保存原文摘录" />
       </div>
     </el-drawer>
+
+    <el-dialog
+      v-model="feedbackDialogVisible"
+      title="这个回答哪里需要改进？"
+      width="min(520px, 94vw)"
+    >
+      <el-form label-position="top">
+        <el-form-item label="问题类型">
+          <el-select v-model="feedbackReason">
+            <el-option
+              v-for="item in feedbackReasons"
+              :key="item.value"
+              :label="item.label"
+              :value="item.value"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="补充说明">
+          <el-input
+            v-model="feedbackComment"
+            type="textarea"
+            :rows="4"
+            maxlength="500"
+            show-word-limit
+            placeholder="可补充具体错误或期望内容"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="feedbackDialogVisible = false">取消</el-button>
+        <el-button
+          type="primary"
+          :loading="feedbackMutation.isPending.value"
+          @click="submitUnhelpfulFeedback"
+          >提交反馈</el-button
+        >
+      </template>
+    </el-dialog>
   </div>
 </template>

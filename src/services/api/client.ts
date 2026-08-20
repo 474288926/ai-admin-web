@@ -2,6 +2,7 @@ import { clearSession, readSession, writeSession } from '@/services/session-stor
 import { authTokensSchema } from './schemas'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api/v1'
+export const AUTH_SESSION_EXPIRED_EVENT = 'auth:session-expired'
 
 export function createClientRequestId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -37,12 +38,33 @@ export class ApiError extends Error {
 }
 
 let refreshPromise: Promise<string | null> | null = null
+let lastSessionExpiredNotificationAt = 0
+
+function notifySessionExpired(): void {
+  const now = Date.now()
+  if (now - lastSessionExpiredNotificationAt < 1000) return
+  lastSessionExpiredNotificationAt = now
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(AUTH_SESSION_EXPIRED_EVENT))
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === 'AbortError'
+}
+
+async function fetchResponse(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  try {
+    return await fetch(input, init)
+  } catch (error) {
+    if (isAbortError(error)) throw new ApiError('请求已取消', 0, 'REQUEST_CANCELLED')
+    throw new ApiError('无法连接服务，请检查网络或确认后端已经启动', 0, 'NETWORK_ERROR')
+  }
+}
 
 async function refreshAccessToken(): Promise<string | null> {
   const session = readSession()
   if (!session?.refreshToken) return null
 
-  const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+  const response = await fetchResponse(`${API_BASE_URL}/auth/refresh`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ refreshToken: session.refreshToken }),
@@ -50,6 +72,7 @@ async function refreshAccessToken(): Promise<string | null> {
 
   if (!response.ok) {
     clearSession()
+    notifySessionExpired()
     return null
   }
 
@@ -86,7 +109,7 @@ export async function apiRequest<T>(
   }
   if (session?.accessToken) headers.set('Authorization', `Bearer ${session.accessToken}`)
 
-  const response = await fetch(`${API_BASE_URL}${path}`, { ...init, headers })
+  const response = await fetchResponse(`${API_BASE_URL}${path}`, { ...init, headers })
 
   if (response.status === 401 && retryAfterRefresh && session?.refreshToken) {
     refreshPromise ??= refreshAccessToken().finally(() => {
@@ -94,6 +117,11 @@ export async function apiRequest<T>(
     })
     const token = await refreshPromise
     if (token) return apiRequest<T>(path, init, false)
+  }
+
+  if (response.status === 401 && session) {
+    clearSession()
+    notifySessionExpired()
   }
 
   if (!response.ok) throw await parseError(response)

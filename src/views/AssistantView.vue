@@ -20,9 +20,9 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import AiModelSelector from '@/components/AiModelSelector.vue'
 import AiConversationUsage from '@/components/AiConversationUsage.vue'
 import AiUsageBadge from '@/components/AiUsageBadge.vue'
-import { ApiError } from '@/services/api/client'
 import * as assistantApi from '@/services/api/assistant'
 import { budgetDecisionMessage, providerFailoverMessage } from '@/services/ai-usage'
+import { getErrorMessage } from '@/services/error-feedback'
 import * as evaluationApi from '@/services/api/evaluations'
 import * as knowledgeBaseApi from '@/services/api/knowledge-bases'
 import {
@@ -167,10 +167,6 @@ watch(selectedKnowledgeBaseId, () => {
   selectedCitation.value = null
   recommendedQuestionSearch.value = ''
 })
-
-function getErrorMessage(error: unknown): string {
-  return error instanceof ApiError ? error.message : '操作失败，请稍后重试'
-}
 
 function createNewConversation(): void {
   selectedConversationId.value = ''

@@ -43,6 +43,51 @@ export interface UpdateKnowledgeBaseInput {
   description?: string | null
 }
 
+export interface KnowledgeBaseRuntimeValues {
+  aiDefaultModelId: string
+  ragPromptVersion: string
+  aiMaxOutputTokens: number
+  aiContextMessageLimit: number
+  retrievalMinimumSimilarity: number
+  retrievalKeywordMinimumScore: number
+  rerankMinimumEvidenceScore: number
+  rerankStrongEvidenceScore: number
+}
+
+export interface RagPromptVersionOption {
+  id: string
+  label: string
+  description: string
+}
+
+export interface KnowledgeBaseRuntimeOverrides {
+  aiDefaultModelId: string | null
+  ragPromptVersion: string | null
+  aiMaxOutputTokens: number | null
+  aiContextMessageLimit: number | null
+  retrievalMinimumSimilarity: number | null
+  retrievalKeywordMinimumScore: number | null
+  rerankMinimumEvidenceScore: number | null
+  rerankStrongEvidenceScore: number | null
+}
+
+export interface KnowledgeBaseRuntimeProfile {
+  knowledgeBaseId: string
+  profileType: string
+  revision: number
+  hasKnowledgeBaseOverrides: boolean
+  availablePromptVersions: RagPromptVersionOption[]
+  systemDefaults: KnowledgeBaseRuntimeValues
+  effective: KnowledgeBaseRuntimeValues
+  overrides: KnowledgeBaseRuntimeOverrides
+  updatedAt: string | null
+}
+
+export interface UpdateKnowledgeBaseRuntimeProfileInput extends Partial<KnowledgeBaseRuntimeOverrides> {
+  revision: number
+  profileType?: string
+}
+
 export type ResourceGrantTargetType = 'USER' | 'DEPARTMENT' | 'GROUP'
 export type ResourcePermissionLevel = 'READ' | 'EDIT' | 'MANAGE'
 

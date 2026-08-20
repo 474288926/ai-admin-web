@@ -89,6 +89,11 @@ const evaluationRunCaseSchema = z.object({
   overallScore: z.number().nullable(),
   errorCode: z.string().nullable(),
   durationMs: z.number().nonnegative().nullable(),
+  inputTokens: z.number().int().nonnegative().nullable(),
+  outputTokens: z.number().int().nonnegative().nullable(),
+  totalTokens: z.number().int().nonnegative().nullable(),
+  cachedInputTokens: z.number().int().nonnegative().nullable(),
+  reasoningOutputTokens: z.number().int().nonnegative().nullable(),
 })
 
 export const evaluationRunSchema = z.object({

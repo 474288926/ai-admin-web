@@ -34,6 +34,7 @@ const editForm = reactive({
   ragPromptVersion: '',
   aiMaxOutputTokens: 2048,
   aiContextMessageLimit: 20,
+  retrievalMinimumSimilarity: 0.2,
   retrievalKeywordMinimumScore: 0.1,
   rerankMinimumEvidenceScore: 0.3,
   rerankStrongEvidenceScore: 0.65,
@@ -119,6 +120,8 @@ function openEditor(): void {
   editForm.aiMaxOutputTokens = value.pending?.aiMaxOutputTokens ?? value.ai.maxOutputTokens
   editForm.aiContextMessageLimit =
     value.pending?.aiContextMessageLimit ?? value.ai.contextMessageLimit
+  editForm.retrievalMinimumSimilarity =
+    value.pending?.retrievalMinimumSimilarity ?? value.retrieval.minimumSimilarity
   editForm.retrievalKeywordMinimumScore =
     value.pending?.retrievalKeywordMinimumScore ?? value.retrieval.keywordMinimumScore
   editForm.rerankMinimumEvidenceScore =
@@ -133,7 +136,7 @@ async function saveConfiguration(): Promise<void> {
   if (!value) return
 
   const promptVersion = editForm.ragPromptVersion.trim()
-  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,99}$/.test(promptVersion)) {
+  if (!value.rag.availablePromptVersions.some((prompt) => prompt.id === promptVersion)) {
     ElMessage.warning('Prompt 版本格式无效')
     return
   }
@@ -146,6 +149,10 @@ async function saveConfiguration(): Promise<void> {
     editForm.aiContextMessageLimit > 200
   ) {
     ElMessage.warning('Token 与上下文消息数必须是有效整数')
+    return
+  }
+  if (editForm.retrievalMinimumSimilarity < -1 || editForm.retrievalMinimumSimilarity > 1) {
+    ElMessage.warning('向量最低相似度必须在 -1 到 1 之间')
     return
   }
   if (
@@ -171,6 +178,7 @@ async function saveConfiguration(): Promise<void> {
       ragPromptVersion: promptVersion,
       aiMaxOutputTokens: editForm.aiMaxOutputTokens,
       aiContextMessageLimit: editForm.aiContextMessageLimit,
+      retrievalMinimumSimilarity: editForm.retrievalMinimumSimilarity,
       retrievalKeywordMinimumScore: editForm.retrievalKeywordMinimumScore,
       rerankMinimumEvidenceScore: editForm.rerankMinimumEvidenceScore,
       rerankStrongEvidenceScore: editForm.rerankStrongEvidenceScore,
@@ -438,6 +446,10 @@ async function refreshConfiguration(): Promise<void> {
             ><strong>{{ configuration.retrieval.keywordCandidateMultiplier }}×</strong>
           </div>
           <div class="settings-row">
+            <span>向量最低相似度</span
+            ><strong>{{ configuration.retrieval.minimumSimilarity }}</strong>
+          </div>
+          <div class="settings-row">
             <span>关键词最低分</span
             ><strong>{{ configuration.retrieval.keywordMinimumScore }}</strong>
           </div>
@@ -690,6 +702,12 @@ async function refreshConfiguration(): Promise<void> {
                 <el-icon><Right /></el-icon>
                 <code>{{ item.changes.aiContextMessageLimit.after }}</code>
               </div>
+              <div v-if="item.changes.retrievalMinimumSimilarity">
+                <span>向量最低相似度</span>
+                <code>{{ item.changes.retrievalMinimumSimilarity.before }}</code>
+                <el-icon><Right /></el-icon>
+                <code>{{ item.changes.retrievalMinimumSimilarity.after }}</code>
+              </div>
               <div v-if="item.changes.retrievalKeywordMinimumScore">
                 <span>关键词最低分</span>
                 <code>{{ item.changes.retrievalKeywordMinimumScore.before }}</code>
@@ -756,11 +774,14 @@ async function refreshConfiguration(): Promise<void> {
           </el-select>
         </el-form-item>
         <el-form-item label="Prompt 版本" required>
-          <el-input
-            v-model="editForm.ragPromptVersion"
-            maxlength="100"
-            placeholder="rag-structured-response-2.0"
-          />
+          <el-select v-model="editForm.ragPromptVersion" style="width: 100%">
+            <el-option
+              v-for="prompt in configuration?.rag.availablePromptVersions ?? []"
+              :key="prompt.id"
+              :label="prompt.label"
+              :value="prompt.id"
+            />
+          </el-select>
         </el-form-item>
         <div class="settings-edit-grid">
           <el-form-item label="最大输出 Token" required>
@@ -784,6 +805,15 @@ async function refreshConfiguration(): Promise<void> {
             <el-input-number
               v-model="editForm.retrievalKeywordMinimumScore"
               :min="0"
+              :max="1"
+              :step="0.05"
+              controls-position="right"
+            />
+          </el-form-item>
+          <el-form-item label="向量最低相似度" required>
+            <el-input-number
+              v-model="editForm.retrievalMinimumSimilarity"
+              :min="-1"
               :max="1"
               :step="0.05"
               controls-position="right"

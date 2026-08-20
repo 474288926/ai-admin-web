@@ -77,6 +77,11 @@ export interface EvaluationRunCase {
   overallScore: number | null
   errorCode: string | null
   durationMs: number | null
+  inputTokens: number | null
+  outputTokens: number | null
+  totalTokens: number | null
+  cachedInputTokens: number | null
+  reasoningOutputTokens: number | null
 }
 
 export interface EvaluationRun {

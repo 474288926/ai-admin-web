@@ -1879,6 +1879,53 @@ input {
   color: #34425a;
   font-size: 14px;
 }
+.run-config-snapshot {
+  padding: 15px;
+  border: 1px solid #e5e9f0;
+  border-radius: 10px;
+  background: #f8fafd;
+}
+.run-config-snapshot-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.run-config-snapshot-head h4 {
+  margin: 0;
+  color: #34425a;
+  font-size: 13px;
+}
+.run-config-snapshot-head span {
+  color: #8c98a9;
+  font-size: 9px;
+}
+.run-config-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.run-config-grid > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  padding: 9px 10px;
+  border: 1px solid #e8ecf2;
+  border-radius: 7px;
+  background: #fff;
+}
+.run-config-grid span {
+  color: #8995a8;
+  font-size: 8px;
+}
+.run-config-grid strong {
+  overflow-wrap: anywhere;
+  color: #34425a;
+  font-size: 10px;
+  font-weight: 600;
+}
 .case-filter {
   display: flex;
   align-items: center;
@@ -5701,6 +5748,13 @@ input {
   }
   .run-detail-summary {
     grid-template-columns: repeat(2, 1fr);
+  }
+  .run-config-snapshot-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .run-config-grid {
+    grid-template-columns: 1fr;
   }
   .evaluation-case-list {
     overflow-x: auto;

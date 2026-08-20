@@ -384,6 +384,13 @@ describe('assistant api', () => {
       createdAt: '2026-08-12T01:06:00.000Z',
       updatedAt: '2026-08-12T01:06:00.000Z',
     }
+    const unhelpfulFeedback = {
+      ...feedback,
+      id: 'c4a8658b-4ec4-4c39-a1c8-d3db28e9f2c8',
+      rating: 'UNHELPFUL',
+      reason: 'INCORRECT',
+      comment: '引用没有覆盖问题中的版本要求',
+    }
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(
@@ -425,11 +432,22 @@ describe('assistant api', () => {
           headers: { 'Content-Type': 'application/json' },
         }),
       )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(unhelpfulFeedback), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
     vi.stubGlobal('fetch', fetchMock)
 
     await createConversation({ knowledgeBaseId, title: '网络故障排查' })
     const sendResult = await sendMessage(conversationId, '设备无法联网怎么办？', 'deepseek')
     await upsertMessageFeedback(conversationId, assistantMessageId, { rating: 'HELPFUL' })
+    await upsertMessageFeedback(conversationId, assistantMessageId, {
+      rating: 'UNHELPFUL',
+      reason: 'INCORRECT',
+      comment: '引用没有覆盖问题中的版本要求',
+    })
 
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toMatchObject({
       knowledgeBaseId,
@@ -442,6 +460,11 @@ describe('assistant api', () => {
     expect(sendResult.providerFailover?.toModelId).toBe('qwen')
     expect(JSON.parse(String(fetchMock.mock.calls[2]?.[1]?.body))).toMatchObject({
       rating: 'HELPFUL',
+    })
+    expect(JSON.parse(String(fetchMock.mock.calls[3]?.[1]?.body))).toMatchObject({
+      rating: 'UNHELPFUL',
+      reason: 'INCORRECT',
+      comment: '引用没有覆盖问题中的版本要求',
     })
   })
 })

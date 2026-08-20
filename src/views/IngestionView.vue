@@ -16,9 +16,9 @@ import {
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
 
-import { ApiError } from '@/services/api/client'
 import * as documentsApi from '@/services/api/documents'
 import * as knowledgeBaseApi from '@/services/api/knowledge-bases'
+import { getErrorMessage } from '@/services/error-feedback'
 import type { DocumentBatch, KnowledgeDocument } from '@/types/document'
 
 const PAGE_SIZE = 20
@@ -150,10 +150,6 @@ watch(
 onBeforeUnmount(() => {
   if (pollTimer) clearInterval(pollTimer)
 })
-
-function getErrorMessage(error: unknown): string {
-  return error instanceof ApiError ? error.message : '操作失败，请稍后重试'
-}
 
 async function refreshAll(): Promise<void> {
   await Promise.all([documentsQuery.refetch(), batchesQuery.refetch()])

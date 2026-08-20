@@ -18,9 +18,9 @@ import {
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
 
-import { ApiError } from '@/services/api/client'
 import * as documentsApi from '@/services/api/documents'
 import * as knowledgeBaseApi from '@/services/api/knowledge-bases'
+import { getErrorMessage } from '@/services/error-feedback'
 import type { KnowledgeDocument } from '@/types/document'
 import type { UpdateDocumentMetadataInput } from '@/types/document'
 
@@ -168,10 +168,6 @@ watch(
 onBeforeUnmount(() => {
   if (pollTimer) clearInterval(pollTimer)
 })
-
-function getErrorMessage(error: unknown): string {
-  return error instanceof ApiError ? error.message : '操作失败，请稍后重试'
-}
 
 function openUpload(): void {
   selectedFiles.value = []

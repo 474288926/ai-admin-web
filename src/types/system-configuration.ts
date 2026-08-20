@@ -15,6 +15,7 @@ export interface SystemConfigurationSnapshot {
     ragPromptVersion: string
     aiMaxOutputTokens: number
     aiContextMessageLimit: number
+    retrievalMinimumSimilarity: number
     retrievalKeywordMinimumScore: number
     rerankMinimumEvidenceScore: number
     rerankStrongEvidenceScore: number
@@ -55,6 +56,7 @@ export interface SystemConfigurationSnapshot {
     driver: string
     mode: string
     keywordCandidateMultiplier: number
+    minimumSimilarity: number
     keywordMinimumScore: number
     rrfK: number
     queryRewriteAiEnabled: boolean
@@ -67,6 +69,11 @@ export interface SystemConfigurationSnapshot {
   }
   rag: {
     promptVersion: string
+    availablePromptVersions: {
+      id: string
+      label: string
+      description: string
+    }[]
     structuredResponseEnabled: boolean
     reasoningEffort: string
     customerSafetyEnabled: boolean
@@ -110,6 +117,7 @@ export interface UpdateSystemConfigurationInput {
   ragPromptVersion?: string
   aiMaxOutputTokens?: number
   aiContextMessageLimit?: number
+  retrievalMinimumSimilarity?: number
   retrievalKeywordMinimumScore?: number
   rerankMinimumEvidenceScore?: number
   rerankStrongEvidenceScore?: number
@@ -141,6 +149,7 @@ export interface SystemConfigurationHistory {
       ragPromptVersion?: SystemConfigurationHistoryValueChange<string>
       aiMaxOutputTokens?: SystemConfigurationHistoryValueChange<number>
       aiContextMessageLimit?: SystemConfigurationHistoryValueChange<number>
+      retrievalMinimumSimilarity?: SystemConfigurationHistoryValueChange<number>
       retrievalKeywordMinimumScore?: SystemConfigurationHistoryValueChange<number>
       rerankMinimumEvidenceScore?: SystemConfigurationHistoryValueChange<number>
       rerankStrongEvidenceScore?: SystemConfigurationHistoryValueChange<number>

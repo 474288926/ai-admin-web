@@ -4,12 +4,14 @@ import type {
   CreateKnowledgeBaseInput,
   KnowledgeBase,
   KnowledgeBaseGrants,
+  KnowledgeBaseRuntimeProfile,
   OrganizationSummary,
   OrganizationStructure,
   PaginatedResult,
   ResourceGrantTargetType,
   UpsertKnowledgeBaseGrantInput,
   UpdateKnowledgeBaseInput,
+  UpdateKnowledgeBaseRuntimeProfileInput,
 } from '@/types/knowledge-base'
 import { apiRequest } from './client'
 
@@ -108,6 +110,46 @@ const organizationStructureSchema = organizationSchema.extend({
   ),
 })
 
+const runtimeValuesSchema = z.object({
+  aiDefaultModelId: z.string(),
+  ragPromptVersion: z.string(),
+  aiMaxOutputTokens: z.number().int().positive(),
+  aiContextMessageLimit: z.number().int().positive(),
+  retrievalMinimumSimilarity: z.number().min(-1).max(1),
+  retrievalKeywordMinimumScore: z.number().min(0).max(1),
+  rerankMinimumEvidenceScore: z.number().min(0).max(1),
+  rerankStrongEvidenceScore: z.number().min(0).max(1),
+})
+
+const runtimeOverridesSchema = runtimeValuesSchema.extend({
+  aiDefaultModelId: z.string().nullable(),
+  ragPromptVersion: z.string().nullable(),
+  aiMaxOutputTokens: z.number().int().positive().nullable(),
+  aiContextMessageLimit: z.number().int().positive().nullable(),
+  retrievalMinimumSimilarity: z.number().min(-1).max(1).nullable(),
+  retrievalKeywordMinimumScore: z.number().min(0).max(1).nullable(),
+  rerankMinimumEvidenceScore: z.number().min(0).max(1).nullable(),
+  rerankStrongEvidenceScore: z.number().min(0).max(1).nullable(),
+})
+
+const runtimeProfileSchema = z.object({
+  knowledgeBaseId: z.uuid(),
+  profileType: z.string(),
+  revision: z.number().int().nonnegative(),
+  hasKnowledgeBaseOverrides: z.boolean(),
+  availablePromptVersions: z.array(
+    z.object({
+      id: z.string().min(1),
+      label: z.string().min(1),
+      description: z.string().min(1),
+    }),
+  ),
+  systemDefaults: runtimeValuesSchema,
+  effective: runtimeValuesSchema,
+  overrides: runtimeOverridesSchema,
+  updatedAt: z.iso.datetime().nullable(),
+})
+
 export async function listKnowledgeBases(
   page: number,
   pageSize: number,
@@ -178,4 +220,22 @@ export async function updateKnowledgeBase(
 
 export function deleteKnowledgeBase(id: string): Promise<void> {
   return apiRequest<void>(`/knowledge-bases/${id}`, { method: 'DELETE' })
+}
+
+export async function getKnowledgeBaseRuntimeProfile(
+  id: string,
+): Promise<KnowledgeBaseRuntimeProfile> {
+  const result = await apiRequest<unknown>(`/knowledge-bases/${id}/runtime-profile`)
+  return runtimeProfileSchema.parse(result)
+}
+
+export async function updateKnowledgeBaseRuntimeProfile(
+  id: string,
+  input: UpdateKnowledgeBaseRuntimeProfileInput,
+): Promise<KnowledgeBaseRuntimeProfile> {
+  const result = await apiRequest<unknown>(`/knowledge-bases/${id}/runtime-profile`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  })
+  return runtimeProfileSchema.parse(result)
 }

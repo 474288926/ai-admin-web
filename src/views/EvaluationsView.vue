@@ -15,9 +15,9 @@ import {
 import { ElMessage, ElMessageBox, type UploadFile } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
 
-import { ApiError } from '@/services/api/client'
 import * as evaluationApi from '@/services/api/evaluations'
 import * as knowledgeBaseApi from '@/services/api/knowledge-bases'
+import { getErrorMessage } from '@/services/error-feedback'
 import type {
   EvaluationCaseSeverity,
   EvaluationComparison,
@@ -204,10 +204,6 @@ watch(
   { immediate: true },
 )
 
-function getErrorMessage(error: unknown): string {
-  return error instanceof ApiError ? error.message : '操作失败，请稍后重试'
-}
-
 async function refreshData(): Promise<void> {
   await Promise.all([suitesQuery.refetch(), runsQuery.refetch()])
 }
@@ -354,8 +350,44 @@ function comparisonMetricLabel(key: string): string {
       averageFaithfulnessScore: '忠实度',
       averageCitationAccuracyScore: '引用准确率',
       refusalAccuracy: '拒答准确率',
+      averageDurationMs: '平均耗时',
+      totalDurationMs: '总耗时',
+      averageTotalTokens: '平均 Token',
+      totalInputTokens: '输入 Token',
+      totalOutputTokens: '输出 Token',
+      totalTokens: '总 Token',
     }[key] ?? key
   )
+}
+
+function operationalMetricValue(key: string, value: number | null): string {
+  if (value === null) return '—'
+  if (key.toLowerCase().includes('duration')) return `${Math.round(value)} ms`
+  return value.toLocaleString('zh-CN')
+}
+
+function comparisonMetricValue(key: string, value: number | null): string {
+  return key.includes('Duration') || key.includes('Tokens')
+    ? operationalMetricValue(key, value)
+    : score(value)
+}
+
+function comparisonMetricDelta(key: string, value: number | null): string {
+  if (value === null) return '—'
+  const prefix = value >= 0 ? '+' : ''
+  return key.includes('Duration') || key.includes('Tokens')
+    ? `${prefix}${Math.round(value).toLocaleString('zh-CN')}`
+    : `${prefix}${(value * 100).toFixed(1)}%`
+}
+
+function comparisonDeltaIsPositive(key: string, value: number | null): boolean {
+  if (value === null) return false
+  return key.includes('Duration') || key.includes('Tokens') ? value < 0 : value > 0
+}
+
+function comparisonDeltaIsNegative(key: string, value: number | null): boolean {
+  if (value === null) return false
+  return key.includes('Duration') || key.includes('Tokens') ? value > 0 : value < 0
 }
 
 function metricDeltaEntries(value?: EvaluationComparison) {
@@ -564,12 +596,14 @@ function metricDeltaEntries(value?: EvaluationComparison) {
           <div class="metric-delta-list">
             <div v-for="[key, item] in metricDeltaEntries(comparison)" :key="key">
               <span>{{ comparisonMetricLabel(key) }}</span
-              ><strong>{{ score(item.candidate) }}</strong
-              ><b :class="{ positive: (item.delta ?? 0) > 0, negative: (item.delta ?? 0) < 0 }">{{
-                item.delta === null
-                  ? '—'
-                  : `${item.delta >= 0 ? '+' : ''}${(item.delta * 100).toFixed(1)}%`
-              }}</b>
+              ><strong>{{ comparisonMetricValue(key, item.candidate) }}</strong
+              ><b
+                :class="{
+                  positive: comparisonDeltaIsPositive(key, item.delta),
+                  negative: comparisonDeltaIsNegative(key, item.delta),
+                }"
+                >{{ comparisonMetricDelta(key, item.delta) }}</b
+              >
             </div>
           </div>
           <p v-if="comparison.changedConfigKeys.length">
@@ -600,6 +634,78 @@ function metricDeltaEntries(value?: EvaluationComparison) {
             ><strong>{{ runDetail.failedCases + runDetail.errorCases }}</strong>
           </div>
         </div>
+        <section class="run-config-snapshot">
+          <div class="run-config-snapshot-head">
+            <h4>运行配置快照</h4>
+            <span>本次评测启动时固定的知识库有效配置</span>
+          </div>
+          <div class="run-config-grid">
+            <div>
+              <span>模型</span
+              ><strong>{{
+                runDetail.configSnapshot.aiModel ?? runDetail.configSnapshot.aiDefaultModelId ?? '—'
+              }}</strong>
+            </div>
+            <div>
+              <span>Provider</span><strong>{{ runDetail.configSnapshot.aiProvider ?? '—' }}</strong>
+            </div>
+            <div>
+              <span>Prompt</span
+              ><strong>{{
+                runDetail.configSnapshot.promptVersion ??
+                runDetail.configSnapshot.ragPromptVersion ??
+                '—'
+              }}</strong>
+            </div>
+            <div>
+              <span>知识库类型</span
+              ><strong>{{
+                runDetail.configSnapshot.knowledgeBaseProfileType ??
+                runDetail.configSnapshot.profileType ??
+                '—'
+              }}</strong>
+            </div>
+            <div>
+              <span>配置 revision</span
+              ><strong>{{ runDetail.configSnapshot.revision ?? '—' }}</strong>
+            </div>
+            <div>
+              <span>知识库 profile revision</span
+              ><strong>{{ runDetail.configSnapshot.knowledgeBaseProfileRevision ?? '—' }}</strong>
+            </div>
+            <div>
+              <span>最大输出 Token</span
+              ><strong>{{ runDetail.configSnapshot.aiMaxOutputTokens ?? '—' }}</strong>
+            </div>
+            <div>
+              <span>上下文消息数</span
+              ><strong>{{ runDetail.configSnapshot.aiContextMessageLimit ?? '—' }}</strong>
+            </div>
+            <div>
+              <span>向量最低相似度</span
+              ><strong>{{ runDetail.configSnapshot.retrievalMinimumSimilarity ?? '—' }}</strong>
+            </div>
+            <div>
+              <span>关键词最低召回分</span
+              ><strong>{{ runDetail.configSnapshot.retrievalKeywordMinimumScore ?? '—' }}</strong>
+            </div>
+            <div>
+              <span>最低/强证据分</span
+              ><strong
+                >{{ runDetail.configSnapshot.rerankMinimumEvidenceScore ?? '—' }} /
+                {{ runDetail.configSnapshot.rerankStrongEvidenceScore ?? '—' }}</strong
+              >
+            </div>
+            <div>
+              <span>数据集版本</span
+              ><strong>{{ runDetail.configSnapshot.externalDatasetVersion ?? '—' }}</strong>
+            </div>
+            <div>
+              <span>文档快照数</span
+              ><strong>{{ runDetail.configSnapshot.sourceSnapshotCount ?? '—' }}</strong>
+            </div>
+          </div>
+        </section>
         <div class="case-filter">
           <span>单题结果</span
           ><el-select v-model="caseStatusFilter"
@@ -631,6 +737,13 @@ function metricDeltaEntries(value?: EvaluationComparison) {
               >{{ severityLabel(item.severity) }}</el-tag
             ><span>{{ score(item.overallScore) }}</span
             ><span>{{ item.durationMs === null ? '—' : `${item.durationMs} ms` }}</span
+            ><span class="case-token-usage"
+              >Token
+              {{
+                item.totalTokens === null
+                  ? '—'
+                  : `${item.totalTokens.toLocaleString('zh-CN')}（入 ${item.inputTokens ?? '—'} / 出 ${item.outputTokens ?? '—'}）`
+              }}</span
             ><el-tag size="small" :type="statusType(item.status)" effect="plain">{{
               statusLabel(item.status)
             }}</el-tag>
