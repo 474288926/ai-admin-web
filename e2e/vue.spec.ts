@@ -9,17 +9,17 @@ const managerCredentialsConfigured = Boolean(managerEmail && managerPassword)
 const supportCredentialsConfigured = Boolean(supportEmail && supportPassword)
 
 const businessPages = [
-  { path: '/dashboard', pageTitle: '运营总览', contentTitle: '运营基座已经就绪' },
-  { path: '/organization', pageTitle: '企业管理', contentTitle: '企业管理' },
-  { path: '/assistant', pageTitle: '知识辅助', contentTitle: '客服知识辅助' },
-  { path: '/knowledge-bases', pageTitle: '知识库管理', contentTitle: '知识库' },
-  { path: '/documents', pageTitle: '文档管理', contentTitle: '文档管理' },
-  { path: '/document-sources', pageTitle: '企业文档同步', contentTitle: '企业文档同步' },
-  { path: '/ingestion', pageTitle: '处理任务', contentTitle: '处理任务' },
-  { path: '/retrieval', pageTitle: '检索调试', contentTitle: '检索调试' },
-  { path: '/quality', pageTitle: '质量分析', contentTitle: '质量分析' },
-  { path: '/evaluations', pageTitle: '评测中心', contentTitle: '评测中心' },
-  { path: '/settings', pageTitle: '系统配置', contentTitle: '系统配置' },
+  { path: '/dashboard', contentTitle: '运营基座已经就绪' },
+  { path: '/organization', contentTitle: '企业管理' },
+  { path: '/assistant', contentTitle: '客服知识辅助' },
+  { path: '/knowledge-bases', contentTitle: '知识库' },
+  { path: '/documents', contentTitle: '文档管理' },
+  { path: '/document-sources', contentTitle: '企业文档同步' },
+  { path: '/ingestion', contentTitle: '处理任务' },
+  { path: '/retrieval', contentTitle: '检索调试' },
+  { path: '/quality', contentTitle: '质量分析' },
+  { path: '/evaluations', contentTitle: '评测中心' },
+  { path: '/settings', contentTitle: '系统配置' },
 ] as const
 
 async function login(page: Page, email: string, password: string): Promise<void> {
@@ -28,7 +28,8 @@ async function login(page: Page, email: string, password: string): Promise<void>
   await page.getByPlaceholder('请输入密码').fill(password)
   await page.getByRole('button', { name: '进入管理端' }).click()
   await expect(page).toHaveURL(/\/dashboard$/)
-  await expect(page.getByRole('heading', { name: '运营总览', level: 1 })).toBeVisible()
+  await expect(page.getByText('知识运营工作台', { exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '运营基座已经就绪', level: 2 })).toBeVisible()
 }
 
 const mockSession = {
@@ -162,7 +163,7 @@ test('企业管理员可以查询安全裁剪后的操作审计记录', async ({
 
   await page.goto('/organization/audit')
 
-  await expect(page.getByRole('heading', { name: '操作审计', level: 1 })).toBeVisible()
+  await expect(page.getByText('知识运营工作台', { exact: true })).toBeVisible()
   await expect(page.getByRole('heading', { name: '企业操作审计', level: 2 })).toBeVisible()
   const auditTable = page.locator('.audit-table')
   await expect(auditTable.getByText('调整成员角色或状态')).toBeVisible()
@@ -381,6 +382,7 @@ test('单企业首次初始化账号可以创建企业', async ({ page }) => {
   let createBody: Record<string, unknown> | null = null
   const createdOrganization = mockOrganizations[0]
 
+  await page.route('**/api/v1/**', (route) => fulfillJson(route, { message: 'not mocked' }, 404))
   await useMockSession(page, {
     organizations: [],
     capabilities: {
@@ -412,6 +414,12 @@ test('单企业首次初始化账号可以创建企业', async ({ page }) => {
       memberships: [],
       departments: [],
       groups: [],
+    }),
+  )
+  await page.route(/\/api\/v1\/knowledge-bases(?:\?.*)?$/u, (route) =>
+    fulfillJson(route, {
+      items: [],
+      meta: { page: 1, pageSize: 100, total: 0, totalPages: 0, hasNextPage: false },
     }),
   )
 
@@ -493,6 +501,7 @@ test('系统配置页展示实际启用的多模型与 Prompt 版本', async ({ 
     retrieval: {
       driver: 'pgvector',
       mode: 'hybrid',
+      minimumSimilarity: 0.2,
       keywordCandidateMultiplier: 4,
       keywordMinimumScore: 0.1,
       rrfK: 60,
@@ -506,6 +515,18 @@ test('系统配置页展示实际启用的多模型与 Prompt 版本', async ({ 
     },
     rag: {
       promptVersion: 'rag-structured-response-e2e',
+      availablePromptVersions: [
+        {
+          id: 'rag-structured-response-e2e',
+          label: 'E2E Prompt',
+          description: 'E2E 测试 Prompt',
+        },
+        {
+          id: 'rag-structured-response-2.0',
+          label: 'Prompt 2.0',
+          description: '用于测试配置更新',
+        },
+      ],
       structuredResponseEnabled: true,
       reasoningEffort: 'minimal',
       customerSafetyEnabled: true,
@@ -617,6 +638,7 @@ test('系统配置页展示实际启用的多模型与 Prompt 版本', async ({ 
         ragPromptVersion: 'rag-structured-response-1.0',
         aiMaxOutputTokens: 1024,
         aiContextMessageLimit: 10,
+        retrievalMinimumSimilarity: 0.2,
         retrievalKeywordMinimumScore: 0.05,
         rerankMinimumEvidenceScore: 0.2,
         rerankStrongEvidenceScore: 0.6,
@@ -636,6 +658,7 @@ test('系统配置页展示实际启用的多模型与 Prompt 版本', async ({ 
           ragPromptVersion: 'rag-structured-response-2.0',
           aiMaxOutputTokens: 4096,
           aiContextMessageLimit: 30,
+          retrievalMinimumSimilarity: 0.2,
           retrievalKeywordMinimumScore: 0.2,
           rerankMinimumEvidenceScore: 0.4,
           rerankStrongEvidenceScore: 0.8,
@@ -665,13 +688,14 @@ test('系统配置页展示实际启用的多模型与 Prompt 版本', async ({ 
   const dialog = page.getByRole('dialog', { name: '编辑系统配置' })
   await expect(dialog).toBeVisible()
   await expect(dialog.getByText('千问 · qwen-e2e-model', { exact: true })).toBeVisible()
-  await expect(page.getByRole('textbox', { name: 'Prompt 版本' })).toHaveValue(
-    'rag-structured-response-e2e',
-  )
+  const promptVersionSelect = dialog.getByRole('combobox', { name: 'Prompt 版本' })
+  await expect(promptVersionSelect).toBeVisible()
+  await expect(dialog.getByText('E2E Prompt', { exact: true })).toBeVisible()
 
   await dialog.getByText('千问 · qwen-e2e-model', { exact: true }).click()
   await page.getByRole('option', { name: 'OpenAI · gpt-e2e-model' }).click()
-  await page.getByRole('textbox', { name: 'Prompt 版本' }).fill('rag-structured-response-2.0')
+  await dialog.getByText('E2E Prompt', { exact: true }).click()
+  await page.getByRole('option', { name: 'Prompt 2.0' }).click()
   await dialog
     .locator('.el-form-item')
     .filter({ hasText: '最大输出 Token' })
@@ -707,6 +731,7 @@ test('系统配置页展示实际启用的多模型与 Prompt 版本', async ({ 
     ragPromptVersion: 'rag-structured-response-2.0',
     aiMaxOutputTokens: 4096,
     aiContextMessageLimit: 30,
+    retrievalMinimumSimilarity: 0.2,
     retrievalKeywordMinimumScore: 0.2,
     rerankMinimumEvidenceScore: 0.4,
     rerankStrongEvidenceScore: 0.8,
@@ -878,6 +903,7 @@ test('模型选择器把选中的模型传给问答接口', async ({ page }) => 
 
   await page.goto('/assistant')
   await expect(page.getByRole('heading', { name: '客服知识辅助', level: 2 })).toBeVisible()
+  await expect(page.getByRole('button', { name: '开始语音输入' })).toBeVisible()
   await page.locator('.ai-model-selector .el-select__wrapper').click()
   await page.getByText('DeepSeek', { exact: true }).last().click()
 
@@ -1035,7 +1061,6 @@ if (managerCredentialsConfigured)
 
       for (const item of businessPages) {
         await page.goto(item.path)
-        await expect(page.getByRole('heading', { name: item.pageTitle, level: 1 })).toBeVisible()
         await expect(page.getByRole('heading', { name: item.contentTitle, level: 2 })).toBeVisible()
         await expect(page.locator('.el-alert--error')).toHaveCount(0)
       }

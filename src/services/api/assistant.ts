@@ -418,3 +418,9 @@ export async function upsertMessageFeedback(
   )
   return feedbackSchema.parse(result)
 }
+
+export function removeMessageFeedback(conversationId: string, messageId: string): Promise<void> {
+  return apiRequest<void>(`/conversations/${conversationId}/messages/${messageId}/feedback`, {
+    method: 'DELETE',
+  })
+}

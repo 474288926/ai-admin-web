@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Lock, Message } from '@element-plus/icons-vue'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
@@ -24,6 +24,12 @@ const submitting = ref(false)
 const ssoSubmitting = ref(false)
 const oidcConfig = ref<authApi.OidcPublicConfig | null>(null)
 const form = reactive<LoginForm>({ email: '', password: '' })
+const entryWorkspaceLabel = computed(() =>
+  entryMode.value === 'employee' ? '员工知识问答' : '运营管理工作台',
+)
+const entrySubmitLabel = computed(() =>
+  entryMode.value === 'employee' ? '进入员工问答' : '进入管理端',
+)
 const rules: FormRules<LoginForm> = {
   email: [
     { required: true, message: '请输入登录邮箱', trigger: 'blur' },
@@ -100,7 +106,7 @@ onMounted(async () => {
       <div class="login-card">
         <div class="login-card-header">
           <span class="status-dot"></span>
-          <span>运营管理工作台</span>
+          <span>{{ entryWorkspaceLabel }}</span>
         </div>
         <h2>欢迎回来</h2>
         <p>
@@ -154,7 +160,7 @@ onMounted(async () => {
             size="large"
             native-type="submit"
             :loading="submitting"
-            >进入管理端</el-button
+            >{{ entrySubmitLabel }}</el-button
           >
         </el-form>
 

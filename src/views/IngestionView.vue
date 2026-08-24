@@ -18,7 +18,7 @@ import { useRoute, useRouter } from 'vue-router'
 
 import * as documentsApi from '@/services/api/documents'
 import * as knowledgeBaseApi from '@/services/api/knowledge-bases'
-import { getErrorMessage } from '@/services/error-feedback'
+import { getErrorCodeMessage, getErrorMessage } from '@/services/error-feedback'
 import type { DocumentBatch, KnowledgeDocument } from '@/types/document'
 
 const PAGE_SIZE = 20
@@ -377,7 +377,10 @@ function formatDate(value: string): string {
                         : undefined
                   "
                 /><small v-if="item.ingestionJob?.lastErrorCode">{{
-                  item.ingestionJob.lastErrorCode
+                  getErrorCodeMessage(
+                    item.ingestionJob.lastErrorCode,
+                    '文档处理失败，请检查任务后重试',
+                  )
                 }}</small>
               </div>
               <div class="job-time">

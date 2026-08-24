@@ -7,6 +7,7 @@ import {
   Delete,
   Document as DocumentIcon,
   FolderOpened,
+  MagicStick,
   EditPen,
   Files,
   Plus,
@@ -20,7 +21,7 @@ import { useRoute, useRouter } from 'vue-router'
 
 import * as documentsApi from '@/services/api/documents'
 import * as knowledgeBaseApi from '@/services/api/knowledge-bases'
-import { getErrorMessage } from '@/services/error-feedback'
+import { getErrorCodeMessage, getErrorMessage } from '@/services/error-feedback'
 import type { KnowledgeDocument } from '@/types/document'
 import type { UpdateDocumentMetadataInput } from '@/types/document'
 
@@ -264,6 +265,16 @@ function openMetadata(item: KnowledgeDocument): void {
     expiresAt: toLocalDateTime(item.expiresAt),
   }
   metadataDialogVisible.value = true
+}
+
+function openCandidateGeneration(item: KnowledgeDocument): void {
+  void router.push({
+    name: 'evaluations',
+    query: {
+      knowledgeBaseId: selectedKnowledgeBaseId.value,
+      candidateDocumentId: item.id,
+    },
+  })
 }
 
 async function saveMetadata(): Promise<void> {
@@ -585,10 +596,24 @@ function formatDate(value: string): string {
                 :stroke-width="4"
               />
               <small v-if="displayState(item).key === 'FAILED'">{{
-                item.ingestionJob?.lastErrorCode || item.errorCode || item.embeddingErrorCode
+                getErrorCodeMessage(
+                  item.ingestionJob?.lastErrorCode || item.errorCode || item.embeddingErrorCode,
+                  '文档处理失败，请在处理任务中重试',
+                )
               }}</small>
             </div>
             <div class="document-row-actions">
+              <el-button
+                v-if="
+                  item.status === 'READY' &&
+                  item.embeddingStatus === 'READY' &&
+                  item.lifecycleStatus === 'PUBLISHED'
+                "
+                link
+                :icon="MagicStick"
+                @click="openCandidateGeneration(item)"
+                >生成评测题</el-button
+              >
               <el-button link :icon="EditPen" @click="openMetadata(item)">元数据</el-button>
               <el-button link :icon="Files" @click="openVersions(item)">版本</el-button>
               <el-dropdown trigger="click"

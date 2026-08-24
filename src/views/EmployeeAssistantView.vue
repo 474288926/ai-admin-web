@@ -137,6 +137,10 @@ const feedbackMutation = useMutation({
       comment,
     }),
 })
+const removeFeedbackMutation = useMutation({
+  mutationFn: ({ conversationId, messageId }: { conversationId: string; messageId: string }) =>
+    assistantApi.removeMessageFeedback(conversationId, messageId),
+})
 
 const feedbackReasons: Array<{ value: FeedbackReason; label: string }> = [
   { value: 'INCORRECT', label: '回答错误' },
@@ -247,6 +251,22 @@ async function submitUnhelpfulFeedback(): Promise<void> {
     feedbackByMessage.value[feedbackMessage.value.id] = 'UNHELPFUL'
     feedbackDialogVisible.value = false
     ElMessage.success('问题反馈已记录')
+  } catch (error) {
+    ElMessage.error(getErrorMessage(error))
+  }
+}
+
+async function removeFeedback(message: ConversationMessage): Promise<void> {
+  if (!selectedConversationId.value) return
+  try {
+    await removeFeedbackMutation.mutateAsync({
+      conversationId: selectedConversationId.value,
+      messageId: message.id,
+    })
+    const next = { ...feedbackByMessage.value }
+    delete next[message.id]
+    feedbackByMessage.value = next
+    ElMessage.success('反馈已撤销')
   } catch (error) {
     ElMessage.error(getErrorMessage(error))
   }
@@ -569,6 +589,13 @@ function formatTime(value: string): string {
                     :type="feedbackByMessage[message.id] === 'UNHELPFUL' ? 'danger' : 'default'"
                     @click="rate(message, 'UNHELPFUL')"
                     >需改进</el-button
+                  ><el-button
+                    v-if="feedbackByMessage[message.id]"
+                    size="small"
+                    link
+                    :loading="removeFeedbackMutation.isPending.value"
+                    @click="removeFeedback(message)"
+                    >撤销反馈</el-button
                   >
                 </div>
               </footer>

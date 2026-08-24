@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
-import { ArrowRight, CircleCheck, Clock, Document, Warning } from '@element-plus/icons-vue'
+import { ArrowRight, Clock, Document, Warning } from '@element-plus/icons-vue'
 
 import * as documentsApi from '@/services/api/documents'
 import * as knowledgeBaseApi from '@/services/api/knowledge-bases'
@@ -59,11 +59,11 @@ const metrics = computed(() => [
     tone: 'amber',
   },
   {
-    label: '质量门禁',
-    value: '通过',
-    note: '当前 Demo 基线已冻结',
-    icon: CircleCheck,
-    tone: 'green',
+    label: '质量基线',
+    value: '候选',
+    note: '测试内容已就绪，正式门禁待通过',
+    icon: Clock,
+    tone: 'amber',
   },
   {
     label: '待处理反馈',

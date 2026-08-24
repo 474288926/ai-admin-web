@@ -30,7 +30,6 @@ const authStore = useAuthStore()
 const collapsed = ref(false)
 const mobileNavigationOpen = ref(false)
 
-const pageTitle = computed(() => String(route.meta.title ?? '运营管理'))
 const userName = computed(() => authStore.user?.name || authStore.user?.email || '知识管理员')
 const currentRoleLabel = computed(() => highestRoleLabel(authStore.organizationRoles))
 
@@ -162,9 +161,14 @@ function closeMobileNavigation(): void {
         >
           <el-icon><MenuIcon /></el-icon>
         </button>
-        <div class="app-header-title">
-          <span class="eyebrow">KNOWLEDGE OPERATIONS</span>
-          <h1>{{ pageTitle }}</h1>
+        <div class="app-header-context" aria-label="当前工作区">
+          <span class="app-header-context-icon">
+            <el-icon><Operation /></el-icon>
+          </span>
+          <div>
+            <strong>知识运营工作台</strong>
+            <small>KNOWLEDGE OPERATIONS</small>
+          </div>
         </div>
         <el-dropdown trigger="click">
           <button class="user-button" type="button">

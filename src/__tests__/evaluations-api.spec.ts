@@ -2,8 +2,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
   compareEvaluationRuns,
+  createEvaluationCandidateGeneration,
+  listEvaluationCandidates,
   listEvaluationRuns,
   listEvaluationSuites,
+  publishEvaluationCandidates,
   startEvaluationRun,
   validateEvaluationImport,
 } from '@/services/api/evaluations'
@@ -154,5 +157,103 @@ describe('evaluations api', () => {
     const comparison = await compareEvaluationRuns(knowledgeBaseId, suiteId, runId, baselineRunId)
     expect(comparison.metricDeltas.averageOverallScore?.delta).toBe(0.05)
     expect(String(fetchMock.mock.calls[1]?.[0])).toContain('/comparisons/')
+  })
+
+  it('creates generation jobs and parses reviewable candidates', async () => {
+    const generationId = 'd82dba1c-11c5-433c-9d7f-21a4dd1a7bab'
+    const documentId = 'df76a995-c58a-421d-be5e-bcaa0734794a'
+    const generation = {
+      id: generationId,
+      status: 'PENDING',
+      documentCount: 1,
+      questionsPerDocument: 5,
+      includeBoundaryCases: true,
+      generatedCaseCount: 0,
+      provider: null,
+      model: null,
+      failureCode: null,
+      createdAt: '2026-08-21T01:00:00.000Z',
+      startedAt: null,
+      finishedAt: null,
+    }
+    const candidate = {
+      id: '1f45a9b4-bff3-4445-b198-e35ad8ddf2bb',
+      generationId,
+      externalId: 'AUTO-001',
+      scenario: 'product_documentation',
+      question: '产品是否支持在线协作？',
+      expectedOutcome: 'ANSWER',
+      expectedAnswerPoints: ['支持在线协作'],
+      expectedDocumentIds: [documentId],
+      criticalEntities: [],
+      severity: 'NORMAL',
+      tags: ['auto_generated'],
+      status: 'DRAFT',
+      revision: 0,
+      reviewNote: null,
+      stale: false,
+      staleReasons: [],
+      sourceDocuments: [
+        {
+          id: documentId,
+          originalName: '产品说明.pdf',
+          version: 1,
+          checksumSha256: 'a'.repeat(64),
+        },
+      ],
+      publishedSuiteId: null,
+      createdAt: '2026-08-21T01:00:10.000Z',
+      updatedAt: '2026-08-21T01:00:10.000Z',
+    }
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(generation), {
+          status: 201,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ items: [candidate], meta: pagination }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(
+      createEvaluationCandidateGeneration(knowledgeBaseId, {
+        documentIds: [documentId],
+        questionsPerDocument: 5,
+        includeBoundaryCases: true,
+      }),
+    ).resolves.toMatchObject({ status: 'PENDING', documentCount: 1 })
+    await expect(listEvaluationCandidates(knowledgeBaseId)).resolves.toMatchObject({
+      items: [expect.objectContaining({ status: 'DRAFT', stale: false })],
+    })
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ method: 'POST' })
+  })
+
+  it('publishes candidates on top of an existing complete suite', async () => {
+    const candidateId = '1f45a9b4-bff3-4445-b198-e35ad8ddf2bb'
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(suite), {
+        status: 201,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    await publishEvaluationCandidates(knowledgeBaseId, {
+      candidateIds: [candidateId],
+      baseSuiteId: suiteId,
+      name: '继承后的完整测试基线',
+    })
+
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toMatchObject({
+      candidateIds: [candidateId],
+      baseSuiteId: suiteId,
+      name: '继承后的完整测试基线',
+    })
   })
 })

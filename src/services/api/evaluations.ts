@@ -1,6 +1,9 @@
 import { z } from 'zod'
 
 import type {
+  EvaluationCandidate,
+  EvaluationCandidateGeneration,
+  EvaluationCandidateStatus,
   EvaluationComparison,
   EvaluationImportValidation,
   RecommendedQuestions,
@@ -35,6 +38,49 @@ const recommendedQuestionsSchema = z.object({
   suiteName: z.string().nullable(),
   suiteVersion: z.number().int().positive().nullable(),
   items: z.array(recommendedQuestionSchema),
+})
+const candidateGenerationSchema = z.object({
+  id: z.uuid(),
+  status: z.enum(['PENDING', 'RUNNING', 'COMPLETED', 'FAILED']),
+  documentCount: z.number().int().nonnegative(),
+  questionsPerDocument: z.number().int().positive(),
+  includeBoundaryCases: z.boolean(),
+  generatedCaseCount: z.number().int().nonnegative(),
+  provider: z.string().nullable(),
+  model: z.string().nullable(),
+  failureCode: z.string().nullable(),
+  createdAt: z.iso.datetime(),
+  startedAt: z.iso.datetime().nullable(),
+  finishedAt: z.iso.datetime().nullable(),
+})
+const evaluationCandidateSchema = z.object({
+  id: z.uuid(),
+  generationId: z.uuid(),
+  externalId: z.string(),
+  scenario: z.string(),
+  question: z.string(),
+  expectedOutcome: z.enum(['ANSWER', 'NO_ANSWER']),
+  expectedAnswerPoints: z.array(z.string()),
+  expectedDocumentIds: z.array(z.string()),
+  criticalEntities: z.array(z.string()),
+  severity: severitySchema,
+  tags: z.array(z.string()),
+  status: z.enum(['DRAFT', 'APPROVED', 'REJECTED', 'PUBLISHED']),
+  revision: z.number().int().nonnegative(),
+  reviewNote: z.string().nullable(),
+  stale: z.boolean(),
+  staleReasons: z.array(z.string()),
+  sourceDocuments: z.array(
+    z.object({
+      id: z.uuid(),
+      originalName: z.string(),
+      version: z.number().int().positive(),
+      checksumSha256: z.string(),
+    }),
+  ),
+  publishedSuiteId: z.uuid().nullable(),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
 })
 
 export const evaluationSuiteSchema = z.object({
@@ -263,6 +309,96 @@ export async function importEvaluationSuite(
   const result = await apiRequest<unknown>(
     `/knowledge-bases/${knowledgeBaseId}/evaluation-suites/imports`,
     { method: 'POST', body: JSON.stringify(dataset) },
+  )
+  return evaluationSuiteSchema.parse(result)
+}
+
+export async function createEvaluationCandidateGeneration(
+  knowledgeBaseId: string,
+  input: {
+    documentIds: string[]
+    questionsPerDocument: number
+    includeBoundaryCases: boolean
+  },
+): Promise<EvaluationCandidateGeneration> {
+  const result = await apiRequest<unknown>(
+    `/knowledge-bases/${knowledgeBaseId}/evaluation-candidates/generations`,
+    { method: 'POST', body: JSON.stringify(input) },
+  )
+  return candidateGenerationSchema.parse(result)
+}
+
+export async function listEvaluationCandidateGenerations(
+  knowledgeBaseId: string,
+  page = 1,
+  pageSize = 20,
+): Promise<PaginatedEvaluations<EvaluationCandidateGeneration>> {
+  const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) })
+  const result = await apiRequest<unknown>(
+    `/knowledge-bases/${knowledgeBaseId}/evaluation-candidates/generations?${params}`,
+  )
+  return z
+    .object({ items: z.array(candidateGenerationSchema), meta: paginationSchema })
+    .parse(result)
+}
+
+export async function listEvaluationCandidates(
+  knowledgeBaseId: string,
+  status?: EvaluationCandidateStatus,
+  page = 1,
+  pageSize = 100,
+): Promise<PaginatedEvaluations<EvaluationCandidate>> {
+  const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) })
+  if (status) params.set('status', status)
+  const result = await apiRequest<unknown>(
+    `/knowledge-bases/${knowledgeBaseId}/evaluation-candidates?${params}`,
+  )
+  return z
+    .object({ items: z.array(evaluationCandidateSchema), meta: paginationSchema })
+    .parse(result)
+}
+
+export async function updateEvaluationCandidate(
+  knowledgeBaseId: string,
+  candidateId: string,
+  input: Partial<
+    Pick<
+      EvaluationCandidate,
+      | 'question'
+      | 'scenario'
+      | 'expectedOutcome'
+      | 'expectedAnswerPoints'
+      | 'expectedDocumentIds'
+      | 'criticalEntities'
+      | 'severity'
+      | 'tags'
+      | 'status'
+      | 'reviewNote'
+    >
+  > & { revision: number },
+): Promise<EvaluationCandidate> {
+  const result = await apiRequest<unknown>(
+    `/knowledge-bases/${knowledgeBaseId}/evaluation-candidates/${candidateId}`,
+    { method: 'PATCH', body: JSON.stringify(input) },
+  )
+  return evaluationCandidateSchema.parse(result)
+}
+
+export async function publishEvaluationCandidates(
+  knowledgeBaseId: string,
+  input: {
+    candidateIds: string[]
+    baseSuiteId?: string
+    name: string
+    description?: string
+    minimumOverallScore?: number
+    minimumCitationAccuracyScore?: number
+    minimumRefusalAccuracy?: number
+  },
+): Promise<EvaluationSuite> {
+  const result = await apiRequest<unknown>(
+    `/knowledge-bases/${knowledgeBaseId}/evaluation-candidates/publish`,
+    { method: 'POST', body: JSON.stringify(input) },
   )
   return evaluationSuiteSchema.parse(result)
 }

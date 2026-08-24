@@ -39,6 +39,23 @@ describe('api client request IDs', () => {
     })
   })
 
+  it('uses the same-origin API path for LAN clients', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ status: 'ok' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    await apiRequest('/health/live')
+
+    const requestTarget = String(fetchMock.mock.calls[0]?.[0])
+    expect(requestTarget).toBe('/api/v1/health/live')
+    expect(requestTarget).not.toContain('localhost')
+    expect(requestTarget).not.toContain('127.0.0.1')
+  })
+
   it('clears the session and emits an event when refresh is rejected', async () => {
     writeSession({
       tokenType: 'Bearer',

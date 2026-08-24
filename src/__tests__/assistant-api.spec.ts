@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
   createConversation,
+  removeMessageFeedback,
   getAiProviderHealthSummary,
   getAiUsageSummary,
   listAiModels,
@@ -373,7 +374,7 @@ describe('assistant api', () => {
     )
   })
 
-  it('creates a bound conversation, sends standard RAG mode and records feedback', async () => {
+  it('creates a bound conversation, sends standard RAG mode, records and removes feedback', async () => {
     const feedback = {
       id: 'b39754d1-dbb0-4c60-9f28-2c8a9bd94944',
       assistantMessageId,
@@ -438,6 +439,7 @@ describe('assistant api', () => {
           headers: { 'Content-Type': 'application/json' },
         }),
       )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
     vi.stubGlobal('fetch', fetchMock)
 
     await createConversation({ knowledgeBaseId, title: '网络故障排查' })
@@ -448,6 +450,7 @@ describe('assistant api', () => {
       reason: 'INCORRECT',
       comment: '引用没有覆盖问题中的版本要求',
     })
+    await removeMessageFeedback(conversationId, assistantMessageId)
 
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toMatchObject({
       knowledgeBaseId,
@@ -466,5 +469,6 @@ describe('assistant api', () => {
       reason: 'INCORRECT',
       comment: '引用没有覆盖问题中的版本要求',
     })
+    expect(fetchMock.mock.calls[4]?.[1]).toMatchObject({ method: 'DELETE' })
   })
 })

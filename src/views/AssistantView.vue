@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import {
   ChatDotRound,
@@ -7,6 +7,7 @@ import {
   CopyDocument,
   Delete,
   Document,
+  Microphone,
   Plus,
   Promotion,
   Refresh,
@@ -40,11 +41,51 @@ import type {
   FeedbackRating,
 } from '@/types/assistant'
 
+interface SpeechRecognitionAlternativeLike {
+  transcript: string
+}
+
+interface SpeechRecognitionResultLike {
+  readonly length: number
+  readonly isFinal: boolean
+  [index: number]: SpeechRecognitionAlternativeLike
+}
+
+interface SpeechRecognitionEventLike extends Event {
+  readonly results: ArrayLike<SpeechRecognitionResultLike>
+}
+
+interface SpeechRecognitionErrorEventLike extends Event {
+  readonly error: string
+}
+
+interface SpeechRecognitionLike {
+  lang: string
+  continuous: boolean
+  interimResults: boolean
+  onstart: (() => void) | null
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null
+  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null
+  onend: (() => void) | null
+  start: () => void
+  stop: () => void
+  abort: () => void
+}
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike
+type SpeechRecognitionWindow = Window & {
+  SpeechRecognition?: SpeechRecognitionConstructor
+  webkitSpeechRecognition?: SpeechRecognitionConstructor
+}
+type MicrophoneAvailability = 'checking' | 'available' | 'unavailable' | 'unknown'
+
 const queryClient = useQueryClient()
 const selectedKnowledgeBaseId = ref('')
 const selectedConversationId = ref('')
 const selectedModelId = ref('')
 const draft = ref('')
+const isListening = ref(false)
+const microphoneAvailability = ref<MicrophoneAvailability>('checking')
 const conversationSearch = ref('')
 const recommendedQuestionSearch = ref('')
 const selectedCitation = ref<Citation | null>(null)
@@ -60,6 +101,14 @@ const ticketSystemUrl = parseTicketSystemUrl(
   import.meta.env.VITE_TICKET_SYSTEM_CREATE_URL as string | undefined,
   window.location.origin,
 )
+let speechRecognition: SpeechRecognitionLike | null = null
+let speechDraftPrefix = ''
+const voiceInputStatusText = computed(() => {
+  if (isListening.value) return '正在聆听，请说出问题'
+  if (microphoneAvailability.value === 'checking') return '正在检测麦克风'
+  if (microphoneAvailability.value === 'unavailable') return '未检测到麦克风设备'
+  return '推荐问题会自动填入这里'
+})
 
 const knowledgeBasesQuery = useQuery({
   queryKey: ['knowledge-bases', 'assistant-options'],
@@ -141,6 +190,10 @@ const feedbackMutation = useMutation({
       comment: input.comment,
     }),
 })
+const removeFeedbackMutation = useMutation({
+  mutationFn: ({ conversationId, messageId }: { conversationId: string; messageId: string }) =>
+    assistantApi.removeMessageFeedback(conversationId, messageId),
+})
 
 const feedbackReasons: Array<{ value: FeedbackReason; label: string }> = [
   { value: 'INCORRECT', label: '回答错误' },
@@ -169,6 +222,7 @@ watch(selectedKnowledgeBaseId, () => {
 })
 
 function createNewConversation(): void {
+  cancelVoiceInput()
   selectedConversationId.value = ''
   selectedCitation.value = null
   draft.value = ''
@@ -177,6 +231,7 @@ function createNewConversation(): void {
 async function send(): Promise<void> {
   const content = draft.value.trim()
   if (!content || !selectedKnowledgeBaseId.value || sendMutation.isPending.value) return
+  cancelVoiceInput()
   draft.value = ''
   try {
     const { conversation, result } = await sendMutation.mutateAsync(content)
@@ -203,7 +258,114 @@ function handleComposerKeydown(event: Event | KeyboardEvent): void {
   }
 }
 
+function speechRecognitionErrorMessage(error: string): string {
+  if (error === 'not-allowed' || error === 'service-not-allowed') return '未获得麦克风权限'
+  if (error === 'no-speech') return '没有识别到语音，请靠近麦克风后重试'
+  if (error === 'audio-capture') return '未检测到可用的麦克风'
+  if (error === 'network') return '语音识别服务暂时不可用'
+  return '语音输入失败，请重试'
+}
+
+async function detectMicrophoneAvailability(): Promise<boolean | null> {
+  if (!navigator.mediaDevices?.enumerateDevices) {
+    microphoneAvailability.value = 'unknown'
+    return null
+  }
+
+  microphoneAvailability.value = 'checking'
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices()
+    const available = devices.some((device) => device.kind === 'audioinput')
+    microphoneAvailability.value = available ? 'available' : 'unavailable'
+    return available
+  } catch {
+    microphoneAvailability.value = 'unknown'
+    return null
+  }
+}
+
+async function handleMediaDeviceChange(): Promise<void> {
+  const available = await detectMicrophoneAvailability()
+  if (available === false && isListening.value) {
+    cancelVoiceInput()
+    ElMessage.warning('麦克风已断开，语音输入已停止')
+  }
+}
+
+function stopVoiceInput(): void {
+  speechRecognition?.stop()
+}
+
+function cancelVoiceInput(): void {
+  speechRecognition?.abort()
+  speechRecognition = null
+  isListening.value = false
+}
+
+async function toggleVoiceInput(): Promise<void> {
+  if (isListening.value) {
+    stopVoiceInput()
+    return
+  }
+
+  const speechWindow = window as SpeechRecognitionWindow
+  const Recognition = speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition
+  if (!Recognition) {
+    ElMessage.warning('当前浏览器不支持语音输入，请使用最新版 Chrome 或 Edge')
+    return
+  }
+
+  const microphoneAvailable = await detectMicrophoneAvailability()
+  if (microphoneAvailable === false) {
+    ElMessage.warning('未检测到麦克风，请连接设备后重试')
+    return
+  }
+
+  speechDraftPrefix = draft.value.trimEnd()
+  const recognition = new Recognition()
+  speechRecognition = recognition
+  recognition.lang = 'zh-CN'
+  recognition.continuous = true
+  recognition.interimResults = true
+  recognition.onstart = () => {
+    isListening.value = true
+  }
+  recognition.onresult = (event) => {
+    let transcript = ''
+    for (let index = 0; index < event.results.length; index += 1) {
+      transcript += event.results[index]?.[0]?.transcript ?? ''
+    }
+    const separator = speechDraftPrefix && transcript ? ' ' : ''
+    draft.value = `${speechDraftPrefix}${separator}${transcript}`.slice(0, 20000)
+  }
+  recognition.onerror = (event) => {
+    if (event.error !== 'aborted') ElMessage.error(speechRecognitionErrorMessage(event.error))
+  }
+  recognition.onend = () => {
+    isListening.value = false
+    if (speechRecognition === recognition) speechRecognition = null
+  }
+
+  try {
+    recognition.start()
+  } catch {
+    speechRecognition = null
+    ElMessage.error('语音输入启动失败，请重试')
+  }
+}
+
+onMounted(() => {
+  void detectMicrophoneAvailability()
+  navigator.mediaDevices?.addEventListener('devicechange', handleMediaDeviceChange)
+})
+
+onBeforeUnmount(() => {
+  cancelVoiceInput()
+  navigator.mediaDevices?.removeEventListener('devicechange', handleMediaDeviceChange)
+})
+
 function useSuggestion(value: string): void {
+  cancelVoiceInput()
   draft.value = value
 }
 
@@ -266,6 +428,22 @@ async function rateHelpful(message: ConversationMessage): Promise<void> {
     })
     feedbackByMessage.value[message.id] = 'HELPFUL'
     ElMessage.success('感谢反馈')
+  } catch (error) {
+    ElMessage.error(getErrorMessage(error))
+  }
+}
+
+async function removeFeedback(message: ConversationMessage): Promise<void> {
+  if (!selectedConversationId.value) return
+  try {
+    await removeFeedbackMutation.mutateAsync({
+      conversationId: selectedConversationId.value,
+      messageId: message.id,
+    })
+    const next = { ...feedbackByMessage.value }
+    delete next[message.id]
+    feedbackByMessage.value = next
+    ElMessage.success('反馈已撤销')
   } catch (error) {
     ElMessage.error(getErrorMessage(error))
   }
@@ -460,7 +638,7 @@ function formatTime(value: string): string {
               <el-icon><Service /></el-icon>
             </div>
             <h3>今天需要辅助处理什么问题？</h3>
-            <p>描述客户现象或业务问题，我会区分对客话术和内部操作，并标注引用依据。</p>
+            <p>在下方直接输入客户问题，或选择一个已审核问题快速开始。</p>
             <div class="assistant-recommendation-head">
               <strong>已审核推荐问题</strong>
               <small v-if="recommendedQuestionsQuery.data.value?.suiteName"
@@ -651,6 +829,13 @@ function formatTime(value: string): string {
                     :type="feedbackByMessage[message.id] === 'UNHELPFUL' ? 'danger' : 'default'"
                     @click="openUnhelpfulFeedback(message)"
                     >需改进</el-button
+                  ><el-button
+                    v-if="feedbackByMessage[message.id]"
+                    size="small"
+                    link
+                    :loading="removeFeedbackMutation.isPending.value"
+                    @click="removeFeedback(message)"
+                    >撤销反馈</el-button
                   >
                 </div>
               </div>
@@ -668,6 +853,34 @@ function formatTime(value: string): string {
         </div>
 
         <footer class="assistant-composer">
+          <header class="assistant-composer-head">
+            <div>
+              <el-icon><Promotion /></el-icon>
+              <strong>输入客户问题</strong>
+            </div>
+            <div class="assistant-composer-voice">
+              <span :class="{ unavailable: microphoneAvailability === 'unavailable' }">{{
+                voiceInputStatusText
+              }}</span>
+              <el-button
+                size="small"
+                :type="isListening ? 'danger' : 'primary'"
+                :plain="!isListening"
+                :icon="Microphone"
+                :loading="microphoneAvailability === 'checking'"
+                :disabled="microphoneAvailability === 'unavailable'"
+                :aria-label="isListening ? '停止语音输入' : '开始语音输入'"
+                @click="toggleVoiceInput"
+                >{{
+                  isListening
+                    ? '停止听写'
+                    : microphoneAvailability === 'unavailable'
+                      ? '无麦克风'
+                      : '语音输入'
+                }}</el-button
+              >
+            </div>
+          </header>
           <el-input
             v-model="draft"
             type="textarea"

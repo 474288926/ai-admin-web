@@ -9,6 +9,51 @@ export type EvaluationCaseStatus =
   | 'ERROR'
   | 'CANCELLED'
 export type EvaluationCaseSeverity = 'NORMAL' | 'HIGH' | 'CRITICAL'
+export type EvaluationCandidateGenerationStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED'
+export type EvaluationCandidateStatus = 'DRAFT' | 'APPROVED' | 'REJECTED' | 'PUBLISHED'
+
+export interface EvaluationCandidateGeneration {
+  id: string
+  status: EvaluationCandidateGenerationStatus
+  documentCount: number
+  questionsPerDocument: number
+  includeBoundaryCases: boolean
+  generatedCaseCount: number
+  provider: string | null
+  model: string | null
+  failureCode: string | null
+  createdAt: string
+  startedAt: string | null
+  finishedAt: string | null
+}
+
+export interface EvaluationCandidate {
+  id: string
+  generationId: string
+  externalId: string
+  scenario: string
+  question: string
+  expectedOutcome: 'ANSWER' | 'NO_ANSWER'
+  expectedAnswerPoints: string[]
+  expectedDocumentIds: string[]
+  criticalEntities: string[]
+  severity: EvaluationCaseSeverity
+  tags: string[]
+  status: EvaluationCandidateStatus
+  revision: number
+  reviewNote: string | null
+  stale: boolean
+  staleReasons: string[]
+  sourceDocuments: Array<{
+    id: string
+    originalName: string
+    version: number
+    checksumSha256: string
+  }>
+  publishedSuiteId: string | null
+  createdAt: string
+  updatedAt: string
+}
 
 export interface RecommendedQuestion {
   id: string

@@ -6,7 +6,9 @@ import {
   CircleClose,
   DataAnalysis,
   DocumentAdd,
+  EditPen,
   Files,
+  MagicStick,
   Refresh,
   TrendCharts,
   UploadFilled,
@@ -16,15 +18,24 @@ import { ElMessage, ElMessageBox, type UploadFile } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
 
 import * as evaluationApi from '@/services/api/evaluations'
+import * as documentApi from '@/services/api/documents'
 import * as knowledgeBaseApi from '@/services/api/knowledge-bases'
-import { getErrorMessage } from '@/services/error-feedback'
+import { getErrorCodeMessage, getErrorMessage } from '@/services/error-feedback'
 import type {
+  EvaluationCandidate,
+  EvaluationCandidateStatus,
   EvaluationCaseSeverity,
   EvaluationComparison,
   EvaluationRun,
   EvaluationRunCase,
   EvaluationRunStatus,
 } from '@/types/evaluation'
+import {
+  evaluationRunKindLabel,
+  fullRunsFirst,
+  latestCompletedFullEvaluationRun,
+  preferredEvaluationRun,
+} from '@/utils/evaluation-runs'
 
 const route = useRoute()
 const router = useRouter()
@@ -37,6 +48,22 @@ const detailDrawerVisible = ref(false)
 const importDialogVisible = ref(false)
 const importDataset = ref<Record<string, unknown> | null>(null)
 const importFileName = ref('')
+const candidateDrawerVisible = ref(false)
+const generationDialogVisible = ref(false)
+const candidateEditDialogVisible = ref(false)
+const publishDialogVisible = ref(false)
+const selectedGenerationDocumentIds = ref<string[]>([])
+const questionsPerDocument = ref(5)
+const includeBoundaryCases = ref(true)
+const candidateStatusFilter = ref<'ALL' | EvaluationCandidateStatus>('ALL')
+const selectedCandidateIds = ref<string[]>([])
+const editingCandidate = ref<EvaluationCandidate | null>(null)
+const editAnswerPoints = ref('')
+const editCriticalEntities = ref('')
+const publishName = ref('')
+const publishDescription = ref('')
+const publishBaseSuiteId = ref('')
+const runAfterPublish = ref(true)
 const caseStatusFilter = ref<'ALL' | EvaluationRunCase['status']>('ALL')
 
 const knowledgeBasesQuery = useQuery({
@@ -45,6 +72,57 @@ const knowledgeBasesQuery = useQuery({
 })
 const knowledgeBases = computed(() => knowledgeBasesQuery.data.value?.items ?? [])
 
+const candidateDocumentsQuery = useQuery({
+  queryKey: computed(() => ['evaluation-candidate-documents', selectedKnowledgeBaseId.value]),
+  queryFn: () => documentApi.listDocuments(selectedKnowledgeBaseId.value, 1, 100),
+  enabled: computed(() => Boolean(selectedKnowledgeBaseId.value)),
+})
+const candidateDocuments = computed(() =>
+  (candidateDocumentsQuery.data.value?.items ?? []).filter(
+    (item) =>
+      item.status === 'READY' &&
+      item.embeddingStatus === 'READY' &&
+      item.lifecycleStatus === 'PUBLISHED',
+  ),
+)
+
+const candidateGenerationsQuery = useQuery({
+  queryKey: computed(() => ['evaluation-candidate-generations', selectedKnowledgeBaseId.value]),
+  queryFn: () =>
+    evaluationApi.listEvaluationCandidateGenerations(selectedKnowledgeBaseId.value, 1, 20),
+  enabled: computed(() =>
+    Boolean(
+      selectedKnowledgeBaseId.value &&
+      (candidateDrawerVisible.value || generationDialogVisible.value),
+    ),
+  ),
+  refetchInterval: 5000,
+})
+const latestCandidateGeneration = computed(() => candidateGenerationsQuery.data.value?.items[0])
+
+const candidatesQuery = useQuery({
+  queryKey: computed(() => [
+    'evaluation-candidates',
+    selectedKnowledgeBaseId.value,
+    candidateStatusFilter.value,
+  ]),
+  queryFn: () =>
+    evaluationApi.listEvaluationCandidates(
+      selectedKnowledgeBaseId.value,
+      candidateStatusFilter.value === 'ALL' ? undefined : candidateStatusFilter.value,
+      1,
+      100,
+    ),
+  enabled: computed(() => Boolean(selectedKnowledgeBaseId.value && candidateDrawerVisible.value)),
+})
+const evaluationCandidates = computed(() => candidatesQuery.data.value?.items ?? [])
+const publishableCandidates = computed(() =>
+  evaluationCandidates.value.filter(
+    (item) =>
+      selectedCandidateIds.value.includes(item.id) && item.status === 'APPROVED' && !item.stale,
+  ),
+)
+
 const suitesQuery = useQuery({
   queryKey: computed(() => ['evaluation-suites', selectedKnowledgeBaseId.value]),
   queryFn: () => evaluationApi.listEvaluationSuites(selectedKnowledgeBaseId.value, 1, 50),
@@ -52,6 +130,12 @@ const suitesQuery = useQuery({
 })
 const suites = computed(() => suitesQuery.data.value?.items ?? [])
 const selectedSuite = computed(() => suites.value.find((item) => item.id === selectedSuiteId.value))
+const publishBaseSuite = computed(() =>
+  suites.value.find((item) => item.id === publishBaseSuiteId.value),
+)
+const mergedPublishCaseCount = computed(
+  () => (publishBaseSuite.value?.caseCount ?? 0) + publishableCandidates.value.length,
+)
 
 const runsQuery = useQuery({
   queryKey: computed(() => [
@@ -66,13 +150,15 @@ const runsQuery = useQuery({
 })
 const runs = computed(() => runsQuery.data.value?.items ?? [])
 const selectedRun = computed(
-  () => runs.value.find((item) => item.id === selectedRunId.value) ?? runs.value[0],
+  () =>
+    runs.value.find((item) => item.id === selectedRunId.value) ??
+    preferredEvaluationRun(runs.value),
 )
 const finishedRuns = computed(() =>
   runs.value.filter((item) => ['COMPLETED', 'FAILED', 'CANCELLED'].includes(item.status)),
 )
 const baselineOptions = computed(() =>
-  finishedRuns.value.filter((item) => item.id !== selectedRun.value?.id),
+  fullRunsFirst(finishedRuns.value.filter((item) => item.id !== selectedRun.value?.id)),
 )
 
 const runDetailQuery = useQuery({
@@ -138,10 +224,66 @@ const importMutation = useMutation({
   mutationFn: (dataset: Record<string, unknown>) =>
     evaluationApi.importEvaluationSuite(selectedKnowledgeBaseId.value, dataset),
 })
+const createCandidateGenerationMutation = useMutation({
+  mutationFn: () =>
+    evaluationApi.createEvaluationCandidateGeneration(selectedKnowledgeBaseId.value, {
+      documentIds: selectedGenerationDocumentIds.value,
+      questionsPerDocument: questionsPerDocument.value,
+      includeBoundaryCases: includeBoundaryCases.value,
+    }),
+})
+const updateCandidateMutation = useMutation({
+  mutationFn: ({
+    candidate,
+    status,
+  }: {
+    candidate: EvaluationCandidate
+    status: EvaluationCandidateStatus
+  }) =>
+    evaluationApi.updateEvaluationCandidate(selectedKnowledgeBaseId.value, candidate.id, {
+      revision: candidate.revision,
+      status,
+    }),
+})
+const saveCandidateMutation = useMutation({
+  mutationFn: (candidate: EvaluationCandidate) =>
+    evaluationApi.updateEvaluationCandidate(selectedKnowledgeBaseId.value, candidate.id, {
+      revision: candidate.revision,
+      question: candidate.question,
+      scenario: candidate.scenario,
+      expectedOutcome: candidate.expectedOutcome,
+      expectedAnswerPoints: lines(editAnswerPoints.value),
+      expectedDocumentIds:
+        candidate.expectedOutcome === 'ANSWER'
+          ? candidate.expectedDocumentIds.length
+            ? candidate.expectedDocumentIds
+            : candidate.sourceDocuments.map((item) => item.id)
+          : [],
+      criticalEntities: lines(editCriticalEntities.value),
+      severity: candidate.severity,
+      reviewNote: candidate.reviewNote ?? undefined,
+    }),
+})
+const publishCandidatesMutation = useMutation({
+  mutationFn: () =>
+    evaluationApi.publishEvaluationCandidates(selectedKnowledgeBaseId.value, {
+      candidateIds: publishableCandidates.value.map((item) => item.id),
+      ...(publishBaseSuiteId.value ? { baseSuiteId: publishBaseSuiteId.value } : {}),
+      name: publishName.value.trim(),
+      ...(publishDescription.value.trim() ? { description: publishDescription.value.trim() } : {}),
+      minimumOverallScore: publishBaseSuite.value?.minimumOverallScore,
+      minimumCitationAccuracyScore: publishBaseSuite.value?.minimumCitationAccuracyScore,
+      minimumRefusalAccuracy: publishBaseSuite.value?.minimumRefusalAccuracy,
+    }),
+})
+const startPublishedSuiteMutation = useMutation({
+  mutationFn: (suiteId: string) =>
+    evaluationApi.startEvaluationRun(selectedKnowledgeBaseId.value, suiteId),
+})
 
-const latestCompletedRun = computed(() => runs.value.find((item) => item.status === 'COMPLETED'))
+const latestCompletedFullRun = computed(() => latestCompletedFullEvaluationRun(runs.value))
 const metricCards = computed(() => {
-  const run = latestCompletedRun.value
+  const run = latestCompletedFullRun.value
   return [
     {
       label: '综合得分',
@@ -175,11 +317,39 @@ watch(selectedKnowledgeBaseId, (value) => {
   selectedSuiteId.value = ''
   selectedRunId.value = ''
   baselineRunId.value = ''
+  selectedCandidateIds.value = []
   const query = { ...route.query }
   if (value) query.knowledgeBaseId = value
   else delete query.knowledgeBaseId
   void router.replace({ query })
 })
+watch(latestCandidateGeneration, async (current, previous) => {
+  if (
+    current?.status === 'COMPLETED' &&
+    previous?.status !== 'COMPLETED' &&
+    candidateDrawerVisible.value
+  ) {
+    ElMessage.success(`已生成 ${current.generatedCaseCount} 道候选题，请逐题审核`)
+    await candidatesQuery.refetch()
+  }
+})
+watch(
+  [candidateDocuments, () => route.query.candidateDocumentId],
+  async ([documents, requestedDocumentId]) => {
+    if (typeof requestedDocumentId !== 'string' || !candidateDocumentsQuery.isSuccess.value) return
+    const query = { ...route.query }
+    delete query.candidateDocumentId
+    await router.replace({ query })
+    const document = documents.find((item) => item.id === requestedDocumentId)
+    if (!document) {
+      ElMessage.warning('该文档尚未发布或处理未完成，暂时不能生成候选评测题')
+      return
+    }
+    selectedGenerationDocumentIds.value = [document.id]
+    generationDialogVisible.value = true
+  },
+  { immediate: true },
+)
 watch(
   suites,
   (items) => {
@@ -196,7 +366,7 @@ watch(
   runs,
   (items) => {
     if (!items.some((item) => item.id === selectedRunId.value))
-      selectedRunId.value = items[0]?.id ?? ''
+      selectedRunId.value = preferredEvaluationRun(items)?.id ?? ''
     if (!baselineOptions.value.some((item) => item.id === baselineRunId.value)) {
       baselineRunId.value = baselineOptions.value[0]?.id ?? ''
     }
@@ -294,6 +464,98 @@ async function importDatasetNow(): Promise<void> {
   }
 }
 
+function openGenerationDialog(): void {
+  selectedGenerationDocumentIds.value = candidateDocuments.value.slice(0, 10).map((item) => item.id)
+  generationDialogVisible.value = true
+}
+
+async function createCandidateGeneration(): Promise<void> {
+  if (!selectedGenerationDocumentIds.value.length) return
+  try {
+    await createCandidateGenerationMutation.mutateAsync()
+    generationDialogVisible.value = false
+    candidateDrawerVisible.value = true
+    ElMessage.success('候选题生成任务已提交')
+    await candidateGenerationsQuery.refetch()
+  } catch (error) {
+    ElMessage.error(getErrorMessage(error))
+  }
+}
+
+async function reviewCandidate(
+  candidate: EvaluationCandidate,
+  status: 'APPROVED' | 'REJECTED',
+): Promise<void> {
+  try {
+    await updateCandidateMutation.mutateAsync({ candidate, status })
+    ElMessage.success(status === 'APPROVED' ? '候选题已通过' : '候选题已退回')
+    await candidatesQuery.refetch()
+  } catch (error) {
+    ElMessage.error(getErrorMessage(error))
+  }
+}
+
+function openCandidateEditor(candidate: EvaluationCandidate): void {
+  editingCandidate.value = { ...candidate }
+  editAnswerPoints.value = candidate.expectedAnswerPoints.join('\n')
+  editCriticalEntities.value = candidate.criticalEntities.join('\n')
+  candidateEditDialogVisible.value = true
+}
+
+async function saveCandidate(): Promise<void> {
+  if (!editingCandidate.value) return
+  try {
+    await saveCandidateMutation.mutateAsync(editingCandidate.value)
+    candidateEditDialogVisible.value = false
+    ElMessage.success('候选题已保存')
+    await candidatesQuery.refetch()
+  } catch (error) {
+    ElMessage.error(getErrorMessage(error))
+  }
+}
+
+function openPublishDialog(): void {
+  if (!publishableCandidates.value.length) return
+  publishName.value = `知识库评测基线 ${new Intl.DateTimeFormat('zh-CN').format(new Date())}`
+  publishDescription.value = '由知识文档自动生成、人工审核后发布的测试评测基线。'
+  publishBaseSuiteId.value = selectedSuiteId.value
+  runAfterPublish.value = true
+  publishDialogVisible.value = true
+}
+
+async function publishCandidates(): Promise<void> {
+  if (!publishName.value.trim() || !publishableCandidates.value.length) return
+  try {
+    const suite = await publishCandidatesMutation.mutateAsync()
+    publishDialogVisible.value = false
+    selectedCandidateIds.value = []
+    selectedSuiteId.value = suite.id
+    await Promise.all([suitesQuery.refetch(), candidatesQuery.refetch()])
+    if (!runAfterPublish.value) {
+      ElMessage.success(`已冻结完整评测套件，共 ${suite.caseCount} 道题`)
+      return
+    }
+    try {
+      const run = await startPublishedSuiteMutation.mutateAsync(suite.id)
+      selectedRunId.value = run.id
+      detailDrawerVisible.value = true
+      await queryClient.invalidateQueries({ queryKey: ['evaluation-runs'] })
+      ElMessage.success(`已冻结 ${suite.caseCount} 道题并启动完整评测`)
+    } catch (error) {
+      ElMessage.warning(`套件已成功冻结，但自动评测未启动：${getErrorMessage(error)}`)
+    }
+  } catch (error) {
+    ElMessage.error(getErrorMessage(error))
+  }
+}
+
+function lines(value: string): string[] {
+  return value
+    .split(/\r?\n/u)
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
 function metricNumber(run: EvaluationRun | undefined, key: string): number | null {
   const value = run?.metrics?.[key]
   return typeof value === 'number' ? value : null
@@ -329,6 +591,18 @@ function statusType(
 
 function severityLabel(value: EvaluationCaseSeverity): string {
   return { NORMAL: '普通', HIGH: '高风险', CRITICAL: '关键' }[value]
+}
+
+function candidateStatusLabel(value: EvaluationCandidateStatus): string {
+  return { DRAFT: '待审核', APPROVED: '已通过', REJECTED: '已退回', PUBLISHED: '已发布' }[value]
+}
+
+function candidateStatusType(
+  value: EvaluationCandidateStatus,
+): 'success' | 'warning' | 'danger' | 'info' {
+  if (value === 'APPROVED' || value === 'PUBLISHED') return 'success'
+  if (value === 'REJECTED') return 'danger'
+  return 'warning'
 }
 
 function formatDate(value: string | null): string {
@@ -416,6 +690,18 @@ function metricDeltaEntries(value?: EvaluationComparison) {
               :value="item.id"
           /></el-select>
         </div>
+        <el-button
+          :icon="MagicStick"
+          :disabled="!selectedKnowledgeBaseId"
+          @click="openGenerationDialog"
+          >从文档生成候选题</el-button
+        >
+        <el-button
+          :icon="EditPen"
+          :disabled="!selectedKnowledgeBaseId"
+          @click="candidateDrawerVisible = true"
+          >审核候选题</el-button
+        >
         <el-button :icon="UploadFilled" @click="importDialogVisible = true">导入评测集</el-button>
         <el-button
           type="primary"
@@ -471,7 +757,7 @@ function metricDeltaEntries(value?: EvaluationComparison) {
         <span>{{ metric.label }}</span
         ><strong>{{ score(metric.value) }}</strong>
         <small v-if="metric.threshold !== undefined">门槛 {{ score(metric.threshold) }}</small
-        ><small v-else>最近一次完成运行</small>
+        ><small v-else>最近一次完整运行</small>
         <i
           v-if="metric.value !== null"
           :class="{ passed: metric.threshold === undefined || metric.value >= metric.threshold }"
@@ -487,10 +773,10 @@ function metricDeltaEntries(value?: EvaluationComparison) {
             <span>{{ runs.length }} 次运行记录</span>
           </div>
           <el-tag
-            v-if="latestCompletedRun"
-            :type="latestCompletedRun.gatePassed ? 'success' : 'danger'"
+            v-if="latestCompletedFullRun"
+            :type="latestCompletedFullRun.gatePassed ? 'success' : 'danger'"
             effect="light"
-            >最近门禁{{ latestCompletedRun.gatePassed ? '通过' : '未通过' }}</el-tag
+            >最近完整门禁{{ latestCompletedFullRun.gatePassed ? '通过' : '未通过' }}</el-tag
           >
         </div>
         <el-empty v-if="!runs.length && !runsQuery.isLoading.value" description="还没有评测运行"
@@ -517,7 +803,7 @@ function metricDeltaEntries(value?: EvaluationComparison) {
                   " /></el-icon
             ></span>
             <div class="run-copy">
-              <strong>{{ formatDate(run.createdAt) }} 运行</strong
+              <strong>{{ formatDate(run.createdAt) }} {{ evaluationRunKindLabel(run) }}</strong
               ><span
                 >{{ run.completedCases }}/{{ run.totalCases }} 用例 · {{ run.failedCases }} 失败 ·
                 {{ run.errorCases }} 错误</span
@@ -568,12 +854,14 @@ function metricDeltaEntries(value?: EvaluationComparison) {
           <el-icon><TrendCharts /></el-icon>
         </div>
         <div v-if="selectedRun" class="comparison-selector">
-          <span>候选：{{ formatDate(selectedRun.createdAt) }}</span
+          <span
+            >候选：{{ formatDate(selectedRun.createdAt) }} ·
+            {{ evaluationRunKindLabel(selectedRun) }}</span
           ><el-select v-model="baselineRunId" placeholder="选择基线运行"
             ><el-option
               v-for="run in baselineOptions"
               :key="run.id"
-              :label="`${formatDate(run.createdAt)} · ${statusLabel(run.status)}`"
+              :label="`${formatDate(run.createdAt)} · ${evaluationRunKindLabel(run)} · ${statusLabel(run.status)}`"
               :value="run.id"
           /></el-select>
         </div>
@@ -614,7 +902,25 @@ function metricDeltaEntries(value?: EvaluationComparison) {
       </article>
     </section>
 
-    <el-drawer v-model="detailDrawerVisible" title="评测运行详情" size="min(920px, 94vw)">
+    <el-drawer v-model="detailDrawerVisible" class="evaluation-run-drawer" size="min(920px, 94vw)">
+      <template #header>
+        <div class="run-detail-drawer-head">
+          <span class="run-detail-drawer-icon">
+            <el-icon><DataAnalysis /></el-icon>
+          </span>
+          <div class="run-detail-drawer-copy">
+            <span>RUN INSPECTION</span>
+            <strong>评测运行详情</strong>
+            <small v-if="runDetail">
+              {{ evaluationRunKindLabel(runDetail) }} · {{ formatDate(runDetail.createdAt) }} ·
+              {{ runDetail.totalCases }} 个用例
+            </small>
+          </div>
+          <el-tag v-if="runDetail" size="small" :type="statusType(runDetail.status)" effect="light">
+            {{ statusLabel(runDetail.status) }}
+          </el-tag>
+        </div>
+      </template>
       <div v-if="runDetail" class="run-detail">
         <div class="run-detail-summary">
           <div>
@@ -751,6 +1057,307 @@ function metricDeltaEntries(value?: EvaluationComparison) {
         </div>
       </div>
     </el-drawer>
+
+    <el-drawer
+      v-model="candidateDrawerVisible"
+      class="evaluation-candidate-drawer"
+      size="min(980px, 96vw)"
+      title="候选题审核"
+    >
+      <div class="candidate-toolbar">
+        <div>
+          <strong>先审核，再冻结为测试评测套件</strong>
+          <span>知识内容不会直接成为正式基线；来源变化后，旧候选题会自动失效。</span>
+        </div>
+        <el-select v-model="candidateStatusFilter" aria-label="候选题状态">
+          <el-option label="全部状态" value="ALL" />
+          <el-option label="待审核" value="DRAFT" />
+          <el-option label="已通过" value="APPROVED" />
+          <el-option label="已退回" value="REJECTED" />
+          <el-option label="已发布" value="PUBLISHED" />
+        </el-select>
+        <el-button
+          :icon="Refresh"
+          :loading="candidatesQuery.isFetching.value"
+          @click="candidatesQuery.refetch()"
+          >刷新</el-button
+        >
+        <el-button
+          type="primary"
+          :disabled="!publishableCandidates.length"
+          @click="openPublishDialog"
+          >发布所选（{{ publishableCandidates.length }}）</el-button
+        >
+      </div>
+
+      <el-alert
+        v-if="
+          latestCandidateGeneration &&
+          ['PENDING', 'RUNNING'].includes(latestCandidateGeneration.status)
+        "
+        title="正在从文档生成候选题"
+        :description="`${latestCandidateGeneration.documentCount} 份文档，每份最多 ${latestCandidateGeneration.questionsPerDocument} 题。完成后会自动刷新。`"
+        type="info"
+        show-icon
+        :closable="false"
+      />
+      <el-alert
+        v-else-if="latestCandidateGeneration?.status === 'FAILED'"
+        title="最近一次候选题生成失败"
+        :description="
+          getErrorCodeMessage(
+            latestCandidateGeneration.failureCode,
+            '候选题生成失败，请检查文档状态和模型配置后重新发起',
+          )
+        "
+        type="error"
+        show-icon
+        :closable="false"
+      />
+
+      <el-empty
+        v-if="!evaluationCandidates.length && !candidatesQuery.isLoading.value"
+        description="还没有候选题"
+      >
+        <el-button type="primary" :icon="MagicStick" @click="openGenerationDialog"
+          >从知识文档生成</el-button
+        >
+      </el-empty>
+      <el-checkbox-group
+        v-else
+        v-model="selectedCandidateIds"
+        v-loading="candidatesQuery.isLoading.value"
+        class="candidate-list"
+      >
+        <article
+          v-for="candidate in evaluationCandidates"
+          :key="candidate.id"
+          class="candidate-card"
+        >
+          <el-checkbox
+            :value="candidate.id"
+            :disabled="candidate.status !== 'APPROVED' || candidate.stale"
+            aria-label="选择候选题发布"
+          />
+          <div class="candidate-card-main">
+            <div class="candidate-card-meta">
+              <el-tag size="small" :type="candidateStatusType(candidate.status)" effect="plain">
+                {{ candidateStatusLabel(candidate.status) }}
+              </el-tag>
+              <el-tag size="small" effect="plain">
+                {{ candidate.expectedOutcome === 'ANSWER' ? '应回答' : '应拒答' }}
+              </el-tag>
+              <span>{{ candidate.scenario }} · {{ severityLabel(candidate.severity) }}</span>
+            </div>
+            <strong>{{ candidate.question }}</strong>
+            <p v-if="candidate.expectedAnswerPoints.length">
+              答案要点：{{ candidate.expectedAnswerPoints.join('；') }}
+            </p>
+            <small>
+              来源：{{
+                candidate.sourceDocuments
+                  .map((item) => `${item.originalName} v${item.version}`)
+                  .join('、')
+              }}
+            </small>
+            <el-alert
+              v-if="candidate.stale"
+              title="来源内容已经变化，不能通过或发布"
+              :description="candidate.staleReasons.join('；')"
+              type="warning"
+              :closable="false"
+              show-icon
+            />
+          </div>
+          <div class="candidate-card-actions">
+            <el-button
+              link
+              :icon="EditPen"
+              :disabled="candidate.status === 'PUBLISHED'"
+              @click="openCandidateEditor(candidate)"
+              >编辑</el-button
+            >
+            <el-button
+              link
+              type="success"
+              :disabled="candidate.stale || candidate.status === 'PUBLISHED'"
+              @click="reviewCandidate(candidate, 'APPROVED')"
+              >通过</el-button
+            >
+            <el-button
+              link
+              type="danger"
+              :disabled="candidate.status === 'PUBLISHED'"
+              @click="reviewCandidate(candidate, 'REJECTED')"
+              >退回</el-button
+            >
+          </div>
+        </article>
+      </el-checkbox-group>
+    </el-drawer>
+
+    <el-dialog
+      v-model="generationDialogVisible"
+      title="从知识文档生成候选题"
+      width="min(720px, 94vw)"
+    >
+      <el-alert
+        title="生成结果只进入待审核区，不会自动成为正式内容"
+        description="系统会固定文档版本和内容摘要；文档更新后，未发布候选题会标记为失效。"
+        type="info"
+        show-icon
+        :closable="false"
+      />
+      <el-form label-position="top" class="candidate-generation-form">
+        <el-form-item label="选择已发布且处理完成的文档（最多 10 份）">
+          <el-checkbox-group
+            v-model="selectedGenerationDocumentIds"
+            class="candidate-document-options"
+          >
+            <el-checkbox
+              v-for="document in candidateDocuments"
+              :key="document.id"
+              :value="document.id"
+              :disabled="
+                !selectedGenerationDocumentIds.includes(document.id) &&
+                selectedGenerationDocumentIds.length >= 10
+              "
+            >
+              {{ document.originalName }} · v{{ document.version }}
+            </el-checkbox>
+          </el-checkbox-group>
+          <el-empty v-if="!candidateDocuments.length" description="暂无可用于生成的已发布文档" />
+        </el-form-item>
+        <div class="candidate-generation-options">
+          <el-form-item label="每份文档最多生成">
+            <el-input-number v-model="questionsPerDocument" :min="1" :max="8" />
+          </el-form-item>
+          <el-form-item label="同时提取明确的拒答边界">
+            <el-switch v-model="includeBoundaryCases" />
+          </el-form-item>
+        </div>
+      </el-form>
+      <template #footer>
+        <el-button @click="generationDialogVisible = false">取消</el-button>
+        <el-button
+          type="primary"
+          :icon="MagicStick"
+          :disabled="!selectedGenerationDocumentIds.length"
+          :loading="createCandidateGenerationMutation.isPending.value"
+          @click="createCandidateGeneration"
+          >开始生成</el-button
+        >
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="candidateEditDialogVisible" title="编辑候选题" width="min(720px, 94vw)">
+      <el-form v-if="editingCandidate" label-position="top">
+        <el-form-item label="问题">
+          <el-input
+            v-model="editingCandidate.question"
+            type="textarea"
+            :rows="3"
+            maxlength="2000"
+            show-word-limit
+          />
+        </el-form-item>
+        <div class="candidate-edit-grid">
+          <el-form-item label="业务场景">
+            <el-select v-model="editingCandidate.scenario">
+              <el-option label="产品文档" value="product_documentation" />
+              <el-option label="操作手册" value="operation_manual" />
+              <el-option label="内部政策" value="internal_policy" />
+              <el-option label="客服辅助" value="customer_service_assist" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="预期行为">
+            <el-select v-model="editingCandidate.expectedOutcome">
+              <el-option label="应回答" value="ANSWER" />
+              <el-option label="应拒答" value="NO_ANSWER" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="风险等级">
+            <el-select v-model="editingCandidate.severity">
+              <el-option label="普通" value="NORMAL" />
+              <el-option label="高风险" value="HIGH" />
+              <el-option label="关键" value="CRITICAL" />
+            </el-select>
+          </el-form-item>
+        </div>
+        <el-form-item
+          v-if="editingCandidate.expectedOutcome === 'ANSWER'"
+          label="答案要点（每行一条）"
+        >
+          <el-input v-model="editAnswerPoints" type="textarea" :rows="5" />
+        </el-form-item>
+        <el-form-item label="关键实体（每行一条）">
+          <el-input v-model="editCriticalEntities" type="textarea" :rows="3" />
+        </el-form-item>
+        <el-form-item label="审核备注">
+          <el-input v-model="editingCandidate.reviewNote" maxlength="500" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="candidateEditDialogVisible = false">取消</el-button>
+        <el-button
+          type="primary"
+          :loading="saveCandidateMutation.isPending.value"
+          @click="saveCandidate"
+          >保存草稿</el-button
+        >
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="publishDialogVisible" title="发布为冻结评测套件" width="min(620px, 94vw)">
+      <el-alert
+        :title="`将冻结 ${mergedPublishCaseCount} 道题（新增 ${publishableCandidates.length} 道）`"
+        description="选择上一版套件后会保留其全部题目并追加本次候选题；新套件和文档快照发布后不可修改。"
+        type="warning"
+        show-icon
+        :closable="false"
+      />
+      <el-form label-position="top" class="candidate-publish-form">
+        <el-form-item label="继承上一版测试套件">
+          <el-select
+            v-model="publishBaseSuiteId"
+            clearable
+            filterable
+            placeholder="不选择则只发布本次候选题"
+          >
+            <el-option
+              v-for="suite in suites"
+              :key="suite.id"
+              :label="`${suite.name} · ${suite.caseCount} 题`"
+              :value="suite.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="套件名称">
+          <el-input v-model="publishName" maxlength="150" />
+        </el-form-item>
+        <el-form-item label="说明">
+          <el-input v-model="publishDescription" type="textarea" :rows="3" maxlength="500" />
+        </el-form-item>
+        <el-form-item label="发布后立即运行完整评测">
+          <el-switch v-model="runAfterPublish" />
+          <span class="candidate-publish-hint"
+            >会调用当前模型并产生 Token；关闭后可稍后手动启动。</span
+          >
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="publishDialogVisible = false">取消</el-button>
+        <el-button
+          type="primary"
+          :disabled="!publishName.trim() || !publishableCandidates.length"
+          :loading="
+            publishCandidatesMutation.isPending.value || startPublishedSuiteMutation.isPending.value
+          "
+          @click="publishCandidates"
+          >确认冻结并发布</el-button
+        >
+      </template>
+    </el-dialog>
 
     <el-dialog v-model="importDialogVisible" title="导入版本化评测集" width="min(680px, 94vw)">
       <el-upload
