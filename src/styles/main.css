@@ -1558,6 +1558,48 @@ input {
 .quality-issue-table {
   overflow-x: auto;
 }
+.backlog-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.backlog-toolbar .el-select {
+  width: 118px;
+}
+.backlog-preview-meta {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  color: #768399;
+  font-size: 11px;
+}
+.backlog-candidate-list {
+  display: grid;
+  gap: 8px;
+  max-height: 420px;
+  overflow-y: auto;
+}
+.backlog-candidate {
+  display: flex !important;
+  width: 100%;
+  margin-right: 0 !important;
+  padding: 10px 12px;
+  border: 1px solid #edf0f5;
+  border-radius: 7px;
+}
+.backlog-candidate .el-checkbox__label {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+  color: #697991;
+  font-size: 11px;
+}
+.backlog-candidate-fingerprint {
+  color: #4d5b72;
+  font-family: 'Cascadia Code', Consolas, monospace;
+}
 .quality-issue-header,
 .quality-issue-row {
   display: grid;

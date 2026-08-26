@@ -110,10 +110,12 @@ function backlogQueryString(query: KnowledgeBacklogPreviewQuery): string {
 
 export async function listKnowledgeBacklog(
   knowledgeBaseId: string,
-  status: 'OPEN' | 'TRIAGED' | 'RESOLVED' | 'DISMISSED' = 'OPEN',
+  status?: 'OPEN' | 'TRIAGED' | 'RESOLVED' | 'DISMISSED',
 ): Promise<KnowledgeBacklogItem[]> {
+  const params = new URLSearchParams({ limit: '100' })
+  if (status) params.set('status', status)
   const result = await apiRequest<unknown>(
-    `/knowledge-bases/${knowledgeBaseId}/quality/knowledge-backlog?status=${status}&limit=50`,
+    `/knowledge-bases/${knowledgeBaseId}/quality/knowledge-backlog?${params}`,
   )
   return z.array(knowledgeBacklogItemSchema).parse(result)
 }

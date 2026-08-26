@@ -29,12 +29,15 @@ import {
 import type { FeedbackReason, QualityEventType } from '@/types/quality'
 
 type RangeValue = '7' | '30' | '90' | 'ALL'
+type BacklogStatus = 'ALL' | 'OPEN' | 'TRIAGED' | 'RESOLVED' | 'DISMISSED'
+const backlogStatuses: BacklogStatus[] = ['ALL', 'OPEN', 'TRIAGED', 'RESOLVED', 'DISMISSED']
 
 const route = useRoute()
 const router = useRouter()
 const queryClient = useQueryClient()
 const selectedKnowledgeBaseId = ref(String(route.query.knowledgeBaseId ?? ''))
 const rangeValue = ref<RangeValue>('30')
+const backlogStatus = ref<BacklogStatus>('OPEN')
 
 const knowledgeBasesQuery = useQuery({
   queryKey: ['knowledge-bases', 'quality-options'],
@@ -61,8 +64,11 @@ const qualityQuery = useQuery({
 
 const summary = computed(() => qualityQuery.data.value)
 const backlogQuery = useQuery({
-  queryKey: computed(() => ['knowledge-backlog', selectedKnowledgeBaseId.value]),
-  queryFn: () => listKnowledgeBacklog(selectedKnowledgeBaseId.value),
+  queryKey: computed(() => ['knowledge-backlog', selectedKnowledgeBaseId.value, backlogStatus.value]),
+  queryFn: () => listKnowledgeBacklog(
+    selectedKnowledgeBaseId.value,
+    backlogStatus.value === 'ALL' ? undefined : backlogStatus.value,
+  ),
   enabled: computed(() => Boolean(selectedKnowledgeBaseId.value)),
 })
 const backlogItems = computed(() => backlogQuery.data.value ?? [])
@@ -231,6 +237,10 @@ function openBacklogPreview(): void {
 
 function updateBacklogStatus(item: KnowledgeBacklogItem, status: KnowledgeBacklogItem['status']): void {
   if (status !== item.status) updateBacklogMutation.mutate({ item, status })
+}
+
+function backlogStatusLabel(value: BacklogStatus): string {
+  return { ALL: '全部状态', OPEN: '待处理', TRIAGED: '已分诊', RESOLVED: '已解决', DISMISSED: '已忽略' }[value]
 }
 </script>
 
@@ -449,11 +459,21 @@ function updateBacklogStatus(item: KnowledgeBacklogItem, status: KnowledgeBacklo
           <h3>知识补充待办</h3>
           <span>由重复无答案事件和负反馈汇总，管理员处理后再补充正式文档</span>
         </div>
-        <el-tag effect="plain" type="warning">{{ backlogItems.length }} 条待处理</el-tag>
+        <div class="backlog-toolbar">
+          <el-select v-model="backlogStatus" size="small" aria-label="待办状态筛选">
+            <el-option
+              v-for="status in backlogStatuses"
+              :key="status"
+              :label="backlogStatusLabel(status)"
+              :value="status"
+            />
+          </el-select>
+          <el-tag effect="plain" type="warning">{{ backlogItems.length }} 条</el-tag>
+        </div>
       </div>
       <el-empty
         v-if="!backlogItems.length && !backlogQuery.isLoading.value"
-        description="当前没有开放的知识补充待办"
+        :description="`当前没有${backlogStatusLabel(backlogStatus)}的知识补充待办`"
       />
       <div v-else class="quality-issue-table">
         <div class="quality-issue-header">
