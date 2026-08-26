@@ -54,6 +54,7 @@ export const systemConfigurationSchema = z.object({
       z.object({
         id: z.string().min(1),
         provider: z.string().min(1),
+        displayName: z.string().min(1).optional().default(''),
         model: z.string().min(1).nullable(),
         enabled: z.boolean(),
         isDefault: z.boolean(),

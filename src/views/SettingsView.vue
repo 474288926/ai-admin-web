@@ -441,7 +441,7 @@ async function refreshConfiguration(): Promise<void> {
                 :type="model.isDefault ? 'success' : 'info'"
                 effect="plain"
               >
-                {{ providerLabel(model.provider) }} · {{ model.model ?? '模型名未配置' }}
+                {{ model.displayName || providerLabel(model.provider) }} · {{ model.model ?? '模型名未配置' }}
                 {{ model.isDefault ? '（默认）' : '' }} ·
                 {{ model.credentialConfigured ? '凭据已配置' : '凭据未配置' }}
               </el-tag>
@@ -831,7 +831,7 @@ async function refreshConfiguration(): Promise<void> {
             <el-option
               v-for="model in configurableModels"
               :key="model.id"
-              :label="`${providerLabel(model.provider)} · ${model.model}`"
+              :label="`${model.displayName || providerLabel(model.provider)} · ${model.model}`"
               :value="model.id"
             />
           </el-select>

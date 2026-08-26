@@ -67,7 +67,12 @@ watch(selectedModelId, (modelId) => {
         :value="model.id"
       >
         <div class="ai-model-option">
-          <span>{{ model.displayName }}</span>
+          <span>
+            {{ model.displayName }}
+            <small v-if="model.pricing" class="ai-model-price">
+              {{ model.pricing.currency === 'CNY' ? '¥' : '$' }}{{ model.pricing.inputPerMillionTokens }}/{{ model.pricing.outputPerMillionTokens }} / 百万输入/输出
+            </small>
+          </span>
           <el-tag v-if="model.isDefault" size="small" effect="plain">默认</el-tag>
         </div>
       </el-option>
@@ -103,6 +108,13 @@ watch(selectedModelId, (modelId) => {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+.ai-model-price {
+  display: block;
+  color: #98a2b3;
+  font-size: 11px;
+  line-height: 1.3;
 }
 
 @media (max-width: 640px) {

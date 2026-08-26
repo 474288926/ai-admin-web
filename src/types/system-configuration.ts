@@ -37,6 +37,7 @@ export interface SystemConfigurationSnapshot {
     models: {
       id: string
       provider: string
+      displayName: string
       model: string | null
       enabled: boolean
       isDefault: boolean
