@@ -9,6 +9,7 @@ import {
   FolderOpened,
   Refresh,
   RefreshRight,
+  QuestionFilled,
   Tickets,
   UploadFilled,
   Warning,
@@ -282,6 +283,14 @@ function formatDate(value: string): string {
       </div>
     </section>
 
+    <el-alert
+      title="处理任务怎么运行"
+      description="上传成功后，后台会依次执行解析、切片和向量化。处理中表示任务仍在执行；失败或取消可以重试；已完成才会稳定参与检索。页面每 5 秒刷新一次，不需要手动重复上传。"
+      type="info"
+      show-icon
+      :closable="false"
+    />
+
     <section v-if="selectedKnowledgeBaseId" class="task-context">
       <el-icon><FolderOpened /></el-icon>
       <div>
@@ -333,6 +342,9 @@ function formatDate(value: string): string {
     <section v-else-if="selectedKnowledgeBaseId" class="task-panel">
       <el-tabs v-model="activeTab">
         <el-tab-pane label="文档任务" name="documents">
+          <p class="ingestion-tab-help">
+            <el-icon><QuestionFilled /></el-icon>单个文件的失败可以单独重试；“重新索引”会重新生成该文件的检索数据，适合更换向量模型或修复索引后使用。
+          </p>
           <el-alert
             v-if="documentsQuery.isError.value"
             title="任务加载失败"
@@ -427,6 +439,9 @@ function formatDate(value: string): string {
         </el-tab-pane>
 
         <el-tab-pane label="批量导入" name="batches">
+          <p class="ingestion-tab-help">
+            <el-icon><QuestionFilled /></el-icon>批量导入会为每个文件单独记录结果，一个文件失败不会撤销同批次中已经成功的文件；“重试失败项”只提交失败或取消的文件。
+          </p>
           <el-alert
             v-if="batchesQuery.isError.value"
             title="批次历史加载失败"

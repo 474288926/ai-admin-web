@@ -610,6 +610,32 @@ input {
   color: #98a3b3;
   font-size: 10px;
 }
+.document-upload-help {
+  margin-bottom: 14px;
+}
+.ingestion-tab-help {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  margin: 0 0 14px;
+  color: #7d899d;
+  font-size: 11px;
+  line-height: 1.6;
+}
+.ingestion-tab-help .el-icon {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: #7890c8;
+}
+.el-form-item__label .el-tooltip__trigger {
+  margin-left: 4px;
+  color: #9aa4b5;
+  vertical-align: -2px;
+  cursor: help;
+}
+.el-form-item__label .el-tooltip__trigger .el-icon {
+  font-size: 13px;
+}
 
 .grants-page {
   display: grid;
@@ -4959,6 +4985,17 @@ input {
 }
 .settings-row > span {
   color: #737a8f;
+  font-size: 13px;
+}
+.settings-row > span .el-tooltip__trigger,
+.settings-edit-grid .el-form-item__label .el-tooltip__trigger {
+  margin-left: 4px;
+  color: #a0a7b8;
+  vertical-align: -2px;
+  cursor: help;
+}
+.settings-row > span .el-icon,
+.settings-edit-grid .el-form-item__label .el-icon {
   font-size: 13px;
 }
 .settings-row > strong {

@@ -422,7 +422,7 @@ async function saveInvitation(): Promise<void> {
       email: inviteForm.email.trim().toLocaleLowerCase(),
       role: inviteForm.role,
     })
-    generatedInvitationLink.value = `${window.location.origin}/accept-invitation?token=${encodeURIComponent(invitation.token)}`
+    generatedInvitationLink.value = `${publicAppOrigin()}/accept-invitation?token=${encodeURIComponent(invitation.token)}`
     ElMessage.success('企业邀请已生成')
     await queryClient.invalidateQueries({
       queryKey: ['organization-invitations', selectedOrganizationId.value],
@@ -430,6 +430,11 @@ async function saveInvitation(): Promise<void> {
   } catch (error) {
     ElMessage.error(getErrorMessage(error))
   }
+}
+
+function publicAppOrigin(): string {
+  const configuredOrigin = (import.meta.env.VITE_PUBLIC_APP_ORIGIN as string | undefined)?.trim()
+  return (configuredOrigin || window.location.origin).replace(/\/+$/, '')
 }
 
 async function copyInvitationLink(): Promise<void> {

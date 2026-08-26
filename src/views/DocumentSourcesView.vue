@@ -1,7 +1,15 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
-import { Connection, Delete, FolderOpened, Plus, Refresh, SetUp } from '@element-plus/icons-vue'
+import {
+  Connection,
+  Delete,
+  FolderOpened,
+  Plus,
+  QuestionFilled,
+  Refresh,
+  SetUp,
+} from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 import { ApiError } from '@/services/api/client'
@@ -270,9 +278,9 @@ function formatDate(value: string | null): string {
       </div>
     </section>
 
-    <el-alert
-      title="安全边界"
-      description="只读取服务端允许根目录内的 TXT、Markdown、PDF、Word 和 Excel；忽略符号链接，不保存连接器密钥，不接受浏览器任意路径。"
+      <el-alert
+        title="安全边界"
+        description="只读取服务端允许根目录内的 TXT、Markdown、PDF、Word 和 Excel；忽略符号链接，不保存连接器密钥，不接受浏览器任意路径。目录同步使用后端配置的允许根目录，不是你当前 Mac 浏览器的任意文件夹。"
       type="info"
       :closable="false"
       show-icon
@@ -280,12 +288,14 @@ function formatDate(value: string | null): string {
 
     <el-dialog v-model="dialogVisible" title="添加目录文档源" width="min(560px, 94vw)">
       <el-form label-position="top"
-        ><el-form-item label="文档源名称"
+        ><el-form-item
+          ><template #label>文档源名称 <el-tooltip content="给这组同步配置起一个容易识别的名称，例如公司制度共享盘；不会改变文件内容。"><el-icon><QuestionFilled /></el-icon></el-tooltip></template
           ><el-input
             v-model="form.name"
             maxlength="100"
             placeholder="例如：公司制度共享盘" /></el-form-item
-        ><el-form-item label="服务端目录路径"
+        ><el-form-item
+          ><template #label>服务端目录路径 <el-tooltip content="填写后端服务器或 Docker 挂载环境中的目录，不是浏览器所在电脑的路径；目录必须位于后端允许根目录内。"><el-icon><QuestionFilled /></el-icon></el-tooltip></template
           ><el-input
             v-model="form.rootPath"
             maxlength="500"
@@ -294,7 +304,7 @@ function formatDate(value: string | null): string {
             >该路径必须位于后端已配置的允许根目录中。</small
           ></el-form-item
         ><el-form-item
-          ><el-checkbox v-model="form.recursive">同步所有子目录</el-checkbox></el-form-item
+          ><el-checkbox v-model="form.recursive">同步所有子目录</el-checkbox><small class="document-source-hint">开启后会递归读取目录下的子文件夹；文件数量较多时首次同步会更久。</small></el-form-item
         ></el-form
       >
       <template #footer

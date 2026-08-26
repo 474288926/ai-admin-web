@@ -1,0 +1,26 @@
+FROM node:24-bookworm-slim AS build
+
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci
+
+COPY . .
+
+ARG VITE_API_BASE_URL=/api/v1
+ARG VITE_SUPPORT_WORKBENCH_ORIGINS=http://localhost:5173
+ARG VITE_PUBLIC_APP_ORIGIN=http://192.168.30.122:5173
+ARG VITE_TICKET_SYSTEM_CREATE_URL=
+ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
+ENV VITE_SUPPORT_WORKBENCH_ORIGINS=${VITE_SUPPORT_WORKBENCH_ORIGINS}
+ENV VITE_PUBLIC_APP_ORIGIN=${VITE_PUBLIC_APP_ORIGIN}
+ENV VITE_TICKET_SYSTEM_CREATE_URL=${VITE_TICKET_SYSTEM_CREATE_URL}
+
+RUN npm run build
+
+FROM nginx:1.27-alpine AS runtime
+
+COPY --from=build /app/dist /usr/share/nginx/html
+COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 80
