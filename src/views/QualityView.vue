@@ -15,7 +15,7 @@ import { useRoute, useRouter } from 'vue-router'
 
 import { ApiError } from '@/services/api/client'
 import * as knowledgeBaseApi from '@/services/api/knowledge-bases'
-import { getQualitySummary } from '@/services/api/quality'
+import { getQualitySummary, listKnowledgeBacklog } from '@/services/api/quality'
 import type { FeedbackReason, QualityEventType } from '@/types/quality'
 
 type RangeValue = '7' | '30' | '90' | 'ALL'
@@ -48,6 +48,12 @@ const qualityQuery = useQuery({
 })
 
 const summary = computed(() => qualityQuery.data.value)
+const backlogQuery = useQuery({
+  queryKey: computed(() => ['knowledge-backlog', selectedKnowledgeBaseId.value]),
+  queryFn: () => listKnowledgeBacklog(selectedKnowledgeBaseId.value),
+  enabled: computed(() => Boolean(selectedKnowledgeBaseId.value)),
+})
+const backlogItems = computed(() => backlogQuery.data.value ?? [])
 const totalQualityEvents = computed(() =>
   (summary.value?.qualityEventCounts ?? []).reduce((total, item) => total + item.count, 0),
 )
@@ -352,6 +358,32 @@ function formatDate(value: string): string {
                 ? '核对冲突版本与有效期'
                 : '排查模型与生成链路'
           }}</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="quality-panel issues-panel" v-loading="backlogQuery.isLoading.value">
+      <div class="quality-panel-head">
+        <div>
+          <h3>知识补充待办</h3>
+          <span>由重复无答案事件和负反馈汇总，管理员处理后再补充正式文档</span>
+        </div>
+        <el-tag effect="plain" type="warning">{{ backlogItems.length }} 条待处理</el-tag>
+      </div>
+      <el-empty
+        v-if="!backlogItems.length && !backlogQuery.isLoading.value"
+        description="当前没有开放的知识补充待办"
+      />
+      <div v-else class="quality-issue-table">
+        <div class="quality-issue-header">
+          <span>问题指纹</span><span>无答案</span><span>负反馈</span><span>最近发生</span><span>状态</span>
+        </div>
+        <div v-for="item in backlogItems" :key="item.id" class="quality-issue-row">
+          <code :title="item.questionFingerprint">{{ issueFingerprint(item.questionFingerprint) }}</code>
+          <strong>{{ item.noAnswerCount }}</strong>
+          <strong>{{ item.unhelpfulCount }}</strong>
+          <span>{{ formatDate(item.lastObservedAt) }}</span>
+          <el-tag size="small" type="warning" effect="plain">{{ item.status === 'OPEN' ? '待处理' : item.status }}</el-tag>
         </div>
       </div>
     </section>

@@ -50,3 +50,31 @@ export async function getQualitySummary(
   )
   return qualitySummarySchema.parse(result)
 }
+
+export const knowledgeBacklogItemSchema = z.object({
+  id: z.uuid(),
+  questionFingerprint: z.string().regex(/^[a-f0-9]{64}$/i),
+  noAnswerCount: z.number().int().nonnegative(),
+  unhelpfulCount: z.number().int().nonnegative(),
+  feedbackReasonCounts: z.record(z.string(), z.number().int().nonnegative()),
+  status: z.enum(['OPEN', 'TRIAGED', 'RESOLVED', 'DISMISSED']),
+  title: z.string().nullable(),
+  note: z.string().nullable(),
+  revision: z.number().int().nonnegative(),
+  firstObservedAt: z.iso.datetime(),
+  lastObservedAt: z.iso.datetime(),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+})
+
+export type KnowledgeBacklogItem = z.infer<typeof knowledgeBacklogItemSchema>
+
+export async function listKnowledgeBacklog(
+  knowledgeBaseId: string,
+  status: 'OPEN' | 'TRIAGED' | 'RESOLVED' | 'DISMISSED' = 'OPEN',
+): Promise<KnowledgeBacklogItem[]> {
+  const result = await apiRequest<unknown>(
+    `/knowledge-bases/${knowledgeBaseId}/quality/knowledge-backlog?status=${status}&limit=50`,
+  )
+  return z.array(knowledgeBacklogItemSchema).parse(result)
+}
