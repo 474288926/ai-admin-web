@@ -84,6 +84,7 @@ export interface EvaluationSuite {
   sourceSnapshot: Record<string, unknown>[]
   minimumOverallScore: number
   minimumCitationAccuracyScore: number
+  minimumFaithfulnessScore: number
   minimumRefusalAccuracy: number
   caseCount: number
   cases: Array<{

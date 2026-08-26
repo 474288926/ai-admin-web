@@ -95,6 +95,7 @@ export const evaluationSuiteSchema = z.object({
   sourceSnapshot: z.array(jsonRecordSchema),
   minimumOverallScore: z.number(),
   minimumCitationAccuracyScore: z.number(),
+  minimumFaithfulnessScore: z.number().default(0.5),
   minimumRefusalAccuracy: z.number(),
   caseCount: z.number().int().nonnegative(),
   cases: z.array(
@@ -393,6 +394,7 @@ export async function publishEvaluationCandidates(
     description?: string
     minimumOverallScore?: number
     minimumCitationAccuracyScore?: number
+    minimumFaithfulnessScore?: number
     minimumRefusalAccuracy?: number
   },
 ): Promise<EvaluationSuite> {

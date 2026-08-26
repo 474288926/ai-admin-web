@@ -273,6 +273,7 @@ const publishCandidatesMutation = useMutation({
       ...(publishDescription.value.trim() ? { description: publishDescription.value.trim() } : {}),
       minimumOverallScore: publishBaseSuite.value?.minimumOverallScore,
       minimumCitationAccuracyScore: publishBaseSuite.value?.minimumCitationAccuracyScore,
+      minimumFaithfulnessScore: publishBaseSuite.value?.minimumFaithfulnessScore,
       minimumRefusalAccuracy: publishBaseSuite.value?.minimumRefusalAccuracy,
     }),
 })
@@ -292,7 +293,11 @@ const metricCards = computed(() => {
     },
     { label: '正确性', key: 'averageCorrectnessScore' },
     { label: '完整性', key: 'averageCompletenessScore' },
-    { label: '证据忠实度', key: 'averageFaithfulnessScore' },
+    {
+      label: '证据忠实度',
+      key: 'averageFaithfulnessScore',
+      threshold: selectedSuite.value?.minimumFaithfulnessScore,
+    },
     {
       label: '引用准确率',
       key: 'averageCitationAccuracyScore',
