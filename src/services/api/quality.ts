@@ -54,6 +54,7 @@ export async function getQualitySummary(
 export const knowledgeBacklogItemSchema = z.object({
   id: z.uuid(),
   questionFingerprint: z.string().regex(/^[a-f0-9]{64}$/i),
+  linkedDocumentId: z.uuid().nullable(),
   noAnswerCount: z.number().int().nonnegative(),
   unhelpfulCount: z.number().int().nonnegative(),
   feedbackReasonCounts: z.record(z.string(), z.number().int().nonnegative()),
@@ -148,7 +149,7 @@ export async function createKnowledgeBacklog(
 export async function updateKnowledgeBacklog(
   knowledgeBaseId: string,
   itemId: string,
-  input: { revision: number; status?: 'OPEN' | 'TRIAGED' | 'RESOLVED' | 'DISMISSED'; title?: string; note?: string },
+  input: { revision: number; status?: 'OPEN' | 'TRIAGED' | 'RESOLVED' | 'DISMISSED'; linkedDocumentId?: string | null; title?: string; note?: string },
 ): Promise<KnowledgeBacklogItem> {
   const result = await apiRequest<unknown>(
     `/knowledge-bases/${knowledgeBaseId}/quality/knowledge-backlog/${itemId}`,

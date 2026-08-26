@@ -17,6 +17,7 @@ import { useRoute, useRouter } from 'vue-router'
 
 import { ApiError } from '@/services/api/client'
 import * as knowledgeBaseApi from '@/services/api/knowledge-bases'
+import * as documentsApi from '@/services/api/documents'
 import {
   createKnowledgeBacklog,
   getQualitySummary,
@@ -72,6 +73,12 @@ const backlogQuery = useQuery({
   enabled: computed(() => Boolean(selectedKnowledgeBaseId.value)),
 })
 const backlogItems = computed(() => backlogQuery.data.value ?? [])
+const documentsQuery = useQuery({
+  queryKey: computed(() => ['documents', 'quality-link-options', selectedKnowledgeBaseId.value]),
+  queryFn: () => documentsApi.listDocuments(selectedKnowledgeBaseId.value, 1, 100),
+  enabled: computed(() => Boolean(selectedKnowledgeBaseId.value)),
+})
+const documents = computed(() => documentsQuery.data.value?.items ?? [])
 const previewVisible = ref(false)
 const previewCandidates = ref<KnowledgeBacklogCandidate[]>([])
 const selectedFingerprints = ref<string[]>([])
@@ -110,8 +117,12 @@ const createBacklogMutation = useMutation({
 })
 
 const updateBacklogMutation = useMutation({
-  mutationFn: ({ item, status }: { item: KnowledgeBacklogItem; status: KnowledgeBacklogItem['status'] }) =>
-    updateKnowledgeBacklog(selectedKnowledgeBaseId.value, item.id, { revision: item.revision, status }),
+  mutationFn: ({ item, status, linkedDocumentId }: { item: KnowledgeBacklogItem; status?: KnowledgeBacklogItem['status']; linkedDocumentId?: string | null }) =>
+    updateKnowledgeBacklog(selectedKnowledgeBaseId.value, item.id, {
+      revision: item.revision,
+      ...(status === undefined ? {} : { status }),
+      ...(linkedDocumentId === undefined ? {} : { linkedDocumentId }),
+    }),
   onSuccess: () => {
     void queryClient.invalidateQueries({ queryKey: ['knowledge-backlog', selectedKnowledgeBaseId.value] })
     ElMessage.success('待办状态已更新')
@@ -237,6 +248,10 @@ function openBacklogPreview(): void {
 
 function updateBacklogStatus(item: KnowledgeBacklogItem, status: KnowledgeBacklogItem['status']): void {
   if (status !== item.status) updateBacklogMutation.mutate({ item, status })
+}
+
+function updateBacklogDocument(item: KnowledgeBacklogItem, documentId: string | null): void {
+  if (documentId !== item.linkedDocumentId) updateBacklogMutation.mutate({ item, linkedDocumentId: documentId })
 }
 
 function backlogStatusLabel(value: BacklogStatus): string {
@@ -475,15 +490,31 @@ function backlogStatusLabel(value: BacklogStatus): string {
         v-if="!backlogItems.length && !backlogQuery.isLoading.value"
         :description="`当前没有${backlogStatusLabel(backlogStatus)}的知识补充待办`"
       />
-      <div v-else class="quality-issue-table">
+      <div v-else class="quality-issue-table backlog-issue-table">
         <div class="quality-issue-header">
-          <span>问题指纹</span><span>无答案</span><span>负反馈</span><span>最近发生</span><span>状态</span>
+          <span>问题指纹</span><span>无答案</span><span>负反馈</span><span>最近发生</span><span>关联文档</span><span>状态</span>
         </div>
         <div v-for="item in backlogItems" :key="item.id" class="quality-issue-row">
           <code :title="item.questionFingerprint">{{ issueFingerprint(item.questionFingerprint) }}</code>
           <strong>{{ item.noAnswerCount }}</strong>
           <strong>{{ item.unhelpfulCount }}</strong>
           <span>{{ formatDate(item.lastObservedAt) }}</span>
+          <el-select
+            :model-value="item.linkedDocumentId"
+            size="small"
+            clearable
+            filterable
+            :loading="documentsQuery.isLoading.value"
+            placeholder="选择文档"
+            @change="updateBacklogDocument(item, $event)"
+          >
+            <el-option
+              v-for="document in documents"
+              :key="document.id"
+              :label="`${document.originalName} · V${document.version}`"
+              :value="document.id"
+            />
+          </el-select>
           <el-select
             :model-value="item.status"
             size="small"

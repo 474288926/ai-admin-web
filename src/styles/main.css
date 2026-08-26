@@ -1647,6 +1647,11 @@ input {
   color: #37465e;
   font-size: 12px;
 }
+.backlog-issue-table .quality-issue-header,
+.backlog-issue-table .quality-issue-row {
+  grid-template-columns: minmax(190px, 1.2fr) 75px 75px 120px minmax(190px, 1.2fr) 118px;
+  min-width: 980px;
+}
 .quality-guidance {
   display: grid;
   grid-template-columns: 38px minmax(0, 1fr) auto;
