@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { useQuery } from '@tanstack/vue-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import {
   ChatDotRound,
   CircleCheck,
@@ -8,20 +8,31 @@ import {
   DataAnalysis,
   DocumentChecked,
   Refresh,
+  Search,
   TrendCharts,
   Warning,
 } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
 
 import { ApiError } from '@/services/api/client'
 import * as knowledgeBaseApi from '@/services/api/knowledge-bases'
-import { getQualitySummary, listKnowledgeBacklog } from '@/services/api/quality'
+import {
+  createKnowledgeBacklog,
+  getQualitySummary,
+  listKnowledgeBacklog,
+  previewKnowledgeBacklog,
+  updateKnowledgeBacklog,
+  type KnowledgeBacklogCandidate,
+  type KnowledgeBacklogItem,
+} from '@/services/api/quality'
 import type { FeedbackReason, QualityEventType } from '@/types/quality'
 
 type RangeValue = '7' | '30' | '90' | 'ALL'
 
 const route = useRoute()
 const router = useRouter()
+const queryClient = useQueryClient()
 const selectedKnowledgeBaseId = ref(String(route.query.knowledgeBaseId ?? ''))
 const rangeValue = ref<RangeValue>('30')
 
@@ -40,6 +51,7 @@ const dateQuery = computed(() => {
   from.setDate(from.getDate() - Number(rangeValue.value))
   return { from: from.toISOString(), to: new Date().toISOString(), topIssueLimit: 20 }
 })
+const backlogWindow = computed(() => ({ from: dateQuery.value.from, to: dateQuery.value.to }))
 
 const qualityQuery = useQuery({
   queryKey: computed(() => ['quality-summary', selectedKnowledgeBaseId.value, rangeValue.value]),
@@ -54,6 +66,55 @@ const backlogQuery = useQuery({
   enabled: computed(() => Boolean(selectedKnowledgeBaseId.value)),
 })
 const backlogItems = computed(() => backlogQuery.data.value ?? [])
+const previewVisible = ref(false)
+const previewCandidates = ref<KnowledgeBacklogCandidate[]>([])
+const selectedFingerprints = ref<string[]>([])
+const previewScannedCount = ref(0)
+
+const previewMutation = useMutation({
+  mutationFn: () => previewKnowledgeBacklog(selectedKnowledgeBaseId.value, {
+    ...backlogWindow.value,
+    minimumNoAnswerCount: 2,
+    minimumUnhelpfulCount: 2,
+    limit: 50,
+  }),
+  onSuccess: (result) => {
+    previewCandidates.value = result.candidates
+    selectedFingerprints.value = result.candidates.map((item) => item.fingerprint)
+    previewScannedCount.value = result.scannedFingerprintCount
+    previewVisible.value = true
+  },
+  onError: (error) => ElMessage.error(getErrorMessage(error)),
+})
+
+const createBacklogMutation = useMutation({
+  mutationFn: () => createKnowledgeBacklog(selectedKnowledgeBaseId.value, {
+    fingerprints: selectedFingerprints.value,
+    ...backlogWindow.value,
+    minimumNoAnswerCount: 2,
+    minimumUnhelpfulCount: 2,
+    limit: 50,
+  }),
+  onSuccess: (result) => {
+    previewVisible.value = false
+    void queryClient.invalidateQueries({ queryKey: ['knowledge-backlog', selectedKnowledgeBaseId.value] })
+    ElMessage.success(`已纳入 ${result.createdOrUpdatedCount} 条知识补充待办`)
+  },
+  onError: (error) => ElMessage.error(getErrorMessage(error)),
+})
+
+const updateBacklogMutation = useMutation({
+  mutationFn: ({ item, status }: { item: KnowledgeBacklogItem; status: KnowledgeBacklogItem['status'] }) =>
+    updateKnowledgeBacklog(selectedKnowledgeBaseId.value, item.id, { revision: item.revision, status }),
+  onSuccess: () => {
+    void queryClient.invalidateQueries({ queryKey: ['knowledge-backlog', selectedKnowledgeBaseId.value] })
+    ElMessage.success('待办状态已更新')
+  },
+  onError: (error) => {
+    ElMessage.error(getErrorMessage(error))
+    void backlogQuery.refetch()
+  },
+})
 const totalQualityEvents = computed(() =>
   (summary.value?.qualityEventCounts ?? []).reduce((total, item) => total + item.count, 0),
 )
@@ -159,6 +220,18 @@ function formatDate(value: string): string {
     minute: '2-digit',
   }).format(new Date(value))
 }
+
+function openBacklogPreview(): void {
+  if (!selectedKnowledgeBaseId.value) {
+    ElMessage.warning('请先选择知识库')
+    return
+  }
+  previewMutation.mutate()
+}
+
+function updateBacklogStatus(item: KnowledgeBacklogItem, status: KnowledgeBacklogItem['status']): void {
+  if (status !== item.status) updateBacklogMutation.mutate({ item, status })
+}
 </script>
 
 <template>
@@ -197,6 +270,14 @@ function formatDate(value: string): string {
             <el-option label="全部时间" value="ALL" />
           </el-select>
         </div>
+        <el-button
+          :icon="Search"
+          :loading="previewMutation.isPending.value"
+          :disabled="!selectedKnowledgeBaseId"
+          @click="openBacklogPreview"
+        >
+          扫描知识缺口
+        </el-button>
         <el-button
           :icon="Refresh"
           circle
@@ -383,10 +464,51 @@ function formatDate(value: string): string {
           <strong>{{ item.noAnswerCount }}</strong>
           <strong>{{ item.unhelpfulCount }}</strong>
           <span>{{ formatDate(item.lastObservedAt) }}</span>
-          <el-tag size="small" type="warning" effect="plain">{{ item.status === 'OPEN' ? '待处理' : item.status }}</el-tag>
+          <el-select
+            :model-value="item.status"
+            size="small"
+            :loading="updateBacklogMutation.isPending.value"
+            @change="updateBacklogStatus(item, $event)"
+          >
+            <el-option label="待处理" value="OPEN" />
+            <el-option label="已分诊" value="TRIAGED" />
+            <el-option label="已解决" value="RESOLVED" />
+            <el-option label="已忽略" value="DISMISSED" />
+          </el-select>
         </div>
       </div>
     </section>
+
+    <el-dialog v-model="previewVisible" title="扫描知识缺口" width="min(760px, 94vw)">
+      <div class="backlog-preview-meta">
+        <span>扫描到 {{ previewScannedCount }} 个问题指纹</span>
+        <span>已选择 {{ selectedFingerprints.length }} 个</span>
+      </div>
+      <el-empty v-if="!previewCandidates.length" description="当前周期没有达到阈值的知识缺口" />
+      <el-checkbox-group v-else v-model="selectedFingerprints" class="backlog-candidate-list">
+        <el-checkbox
+          v-for="item in previewCandidates"
+          :key="item.fingerprint"
+          :value="item.fingerprint"
+          class="backlog-candidate"
+        >
+          <span class="backlog-candidate-fingerprint">{{ issueFingerprint(item.fingerprint) }}</span>
+          <span>无答案 {{ item.noAnswerCount }} 次，负反馈 {{ item.unhelpfulCount }} 次</span>
+          <el-tag v-if="item.alreadyTracked" size="small" effect="plain">已在待办</el-tag>
+        </el-checkbox>
+      </el-checkbox-group>
+      <template #footer>
+        <el-button @click="previewVisible = false">取消</el-button>
+        <el-button
+          type="primary"
+          :loading="createBacklogMutation.isPending.value"
+          :disabled="!selectedFingerprints.length"
+          @click="createBacklogMutation.mutate()"
+        >
+          纳入待办
+        </el-button>
+      </template>
+    </el-dialog>
 
     <section class="quality-guidance">
       <span

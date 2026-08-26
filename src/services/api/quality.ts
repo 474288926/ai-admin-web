@@ -69,6 +69,45 @@ export const knowledgeBacklogItemSchema = z.object({
 
 export type KnowledgeBacklogItem = z.infer<typeof knowledgeBacklogItemSchema>
 
+export const knowledgeBacklogCandidateSchema = z.object({
+  fingerprint: z.string().regex(/^[a-f0-9]{64}$/i),
+  noAnswerCount: z.number().int().nonnegative(),
+  unhelpfulCount: z.number().int().nonnegative(),
+  feedbackReasonCounts: z.array(z.object({ reason: z.string(), count: z.number().int().nonnegative() })),
+  firstObservedAt: z.iso.datetime(),
+  lastObservedAt: z.iso.datetime(),
+  alreadyTracked: z.boolean(),
+})
+
+export type KnowledgeBacklogCandidate = z.infer<typeof knowledgeBacklogCandidateSchema>
+
+const knowledgeBacklogPreviewSchema = z.object({
+  scannedFingerprintCount: z.number().int().nonnegative(),
+  candidates: z.array(knowledgeBacklogCandidateSchema),
+})
+
+export type KnowledgeBacklogPreview = z.infer<typeof knowledgeBacklogPreviewSchema>
+
+export type KnowledgeBacklogPreviewQuery = {
+  from?: string
+  to?: string
+  minimumNoAnswerCount?: number
+  minimumUnhelpfulCount?: number
+  limit?: number
+}
+
+function backlogQueryString(query: KnowledgeBacklogPreviewQuery): string {
+  const params = new URLSearchParams()
+  if (query.from) params.set('from', query.from)
+  if (query.to) params.set('to', query.to)
+  if (query.minimumNoAnswerCount !== undefined)
+    params.set('minimumNoAnswerCount', String(query.minimumNoAnswerCount))
+  if (query.minimumUnhelpfulCount !== undefined)
+    params.set('minimumUnhelpfulCount', String(query.minimumUnhelpfulCount))
+  if (query.limit !== undefined) params.set('limit', String(query.limit))
+  return params.size ? `?${params}` : ''
+}
+
 export async function listKnowledgeBacklog(
   knowledgeBaseId: string,
   status: 'OPEN' | 'TRIAGED' | 'RESOLVED' | 'DISMISSED' = 'OPEN',
@@ -77,4 +116,41 @@ export async function listKnowledgeBacklog(
     `/knowledge-bases/${knowledgeBaseId}/quality/knowledge-backlog?status=${status}&limit=50`,
   )
   return z.array(knowledgeBacklogItemSchema).parse(result)
+}
+
+export async function previewKnowledgeBacklog(
+  knowledgeBaseId: string,
+  query: KnowledgeBacklogPreviewQuery = {},
+): Promise<KnowledgeBacklogPreview> {
+  const result = await apiRequest<unknown>(
+    `/knowledge-bases/${knowledgeBaseId}/quality/knowledge-backlog/preview${backlogQueryString(query)}`,
+  )
+  return knowledgeBacklogPreviewSchema.parse(result)
+}
+
+export async function createKnowledgeBacklog(
+  knowledgeBaseId: string,
+  input: KnowledgeBacklogPreviewQuery & { fingerprints: string[] },
+): Promise<{ createdOrUpdatedCount: number; skippedFingerprints: string[]; items: KnowledgeBacklogItem[] }> {
+  const result = await apiRequest<unknown>(
+    `/knowledge-bases/${knowledgeBaseId}/quality/knowledge-backlog`,
+    { method: 'POST', body: JSON.stringify(input) },
+  )
+  return z.object({
+    createdOrUpdatedCount: z.number().int().nonnegative(),
+    skippedFingerprints: z.array(z.string()),
+    items: z.array(knowledgeBacklogItemSchema),
+  }).parse(result)
+}
+
+export async function updateKnowledgeBacklog(
+  knowledgeBaseId: string,
+  itemId: string,
+  input: { revision: number; status?: 'OPEN' | 'TRIAGED' | 'RESOLVED' | 'DISMISSED'; title?: string; note?: string },
+): Promise<KnowledgeBacklogItem> {
+  const result = await apiRequest<unknown>(
+    `/knowledge-bases/${knowledgeBaseId}/quality/knowledge-backlog/${itemId}`,
+    { method: 'PATCH', body: JSON.stringify(input) },
+  )
+  return knowledgeBacklogItemSchema.parse(result)
 }
