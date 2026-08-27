@@ -21,6 +21,7 @@ import { useRouter } from 'vue-router'
 import AiModelSelector from '@/components/AiModelSelector.vue'
 import AiConversationUsage from '@/components/AiConversationUsage.vue'
 import AiUsageBadge from '@/components/AiUsageBadge.vue'
+import SafeAnswerText from '@/components/SafeAnswerText.vue'
 import * as assistantApi from '@/services/api/assistant'
 import { budgetDecisionMessage, providerFailoverMessage } from '@/services/ai-usage'
 import { getErrorMessage } from '@/services/error-feedback'
@@ -517,11 +518,17 @@ function formatTime(value: string): string {
                 <i></i><i></i><i></i><span>正在查询知识库</span>
               </div>
               <template v-else-if="message.role === 'ASSISTANT' && message.structuredResponse">
-                <p class="employee-answer">{{ message.structuredResponse.answer }}</p>
+                <SafeAnswerText
+                  as="p"
+                  class="employee-answer"
+                  :text="message.structuredResponse.answer"
+                />
                 <div v-if="message.structuredResponse.steps.length" class="employee-answer-section">
                   <strong>操作步骤</strong>
                   <ol>
-                    <li v-for="item in message.structuredResponse.steps" :key="item">{{ item }}</li>
+                    <li v-for="item in message.structuredResponse.steps" :key="item">
+                      <SafeAnswerText :text="item" />
+                    </li>
                   </ol>
                 </div>
                 <div
@@ -531,7 +538,7 @@ function formatTime(value: string): string {
                   <strong>适用条件</strong>
                   <ul>
                     <li v-for="item in message.structuredResponse.applicableConditions" :key="item">
-                      {{ item }}
+                      <SafeAnswerText :text="item" />
                     </li>
                   </ul>
                 </div>
@@ -539,7 +546,7 @@ function formatTime(value: string): string {
                   <strong>注意事项</strong>
                   <ul>
                     <li v-for="item in message.structuredResponse.riskWarnings" :key="item">
-                      {{ item }}
+                      <SafeAnswerText :text="item" />
                     </li>
                   </ul>
                 </div>
@@ -547,13 +554,22 @@ function formatTime(value: string): string {
                   v-if="message.structuredResponse.missingInformation.length"
                   class="employee-missing"
                 >
-                  <strong>资料不足：</strong
-                  >{{ message.structuredResponse.missingInformation.join('；') }}
+                  <strong>资料不足：</strong>
+                  <SafeAnswerText
+                    :text="message.structuredResponse.missingInformation.join('；')"
+                  />
                 </div>
                 <div v-if="message.structuredResponse.refusalReason" class="employee-refusal">
-                  <el-icon><Warning /></el-icon>{{ message.structuredResponse.refusalReason }}
+                  <el-icon><Warning /></el-icon>
+                  <SafeAnswerText :text="message.structuredResponse.refusalReason" />
                 </div>
               </template>
+              <SafeAnswerText
+                v-else-if="message.role === 'ASSISTANT'"
+                as="p"
+                class="employee-answer"
+                :text="message.content ?? ''"
+              />
               <p v-else class="employee-answer">{{ message.content }}</p>
 
               <footer

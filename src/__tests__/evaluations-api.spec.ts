@@ -8,6 +8,7 @@ import {
   listEvaluationSuites,
   publishEvaluationCandidates,
   startEvaluationRun,
+  startKnowledgeBacklogVerificationRun,
   validateEvaluationImport,
 } from '@/services/api/evaluations'
 
@@ -113,6 +114,25 @@ describe('evaluations api', () => {
     await startEvaluationRun(knowledgeBaseId, suiteId)
 
     expect(fetchMock.mock.calls[2]?.[1]).toMatchObject({ method: 'POST' })
+  })
+
+  it('starts an atomic knowledge backlog verification run', async () => {
+    const backlogItemId = '1d8a3787-d6f7-49dc-992f-849c1add3362'
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(run), {
+        status: 201,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(
+      startKnowledgeBacklogVerificationRun(knowledgeBaseId, suiteId, backlogItemId, 3),
+    ).resolves.toMatchObject({ id: runId, gatePassed: true })
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain(
+      `/runs/knowledge-backlog/${backlogItemId}`,
+    )
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({ revision: 3 })
   })
 
   it('validates imports and compares completed runs', async () => {

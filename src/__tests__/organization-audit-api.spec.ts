@@ -74,9 +74,9 @@ describe('organization audit api', () => {
             items: [
               {
                 id: '78e580e7-0903-422c-8a78-bba7fab56c97',
-                entityType: 'DOCUMENT',
+                entityType: 'KNOWLEDGE_BACKLOG',
                 entityId: organizationId,
-                action: 'document.unknown_action',
+                action: 'knowledge_backlog.updated',
                 changes: null,
                 createdAt: '2026-08-17T02:00:00.000Z',
                 actor: null,

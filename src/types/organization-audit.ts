@@ -1,4 +1,8 @@
-export type OrganizationAuditEntityType = 'ORGANIZATION' | 'KNOWLEDGE_BASE' | 'DOCUMENT'
+export type OrganizationAuditEntityType =
+  | 'ORGANIZATION'
+  | 'KNOWLEDGE_BASE'
+  | 'DOCUMENT'
+  | 'KNOWLEDGE_BACKLOG'
 export type OrganizationAuditChangeValue = string | number | boolean | null
 
 export interface OrganizationAuditActor {

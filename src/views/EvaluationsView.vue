@@ -36,6 +36,10 @@ import {
   latestCompletedFullEvaluationRun,
   preferredEvaluationRun,
 } from '@/utils/evaluation-runs'
+import {
+  knowledgeBacklogReturnRoute,
+  readKnowledgeBacklogWorkflow,
+} from '@/utils/knowledge-backlog-workflow'
 
 const route = useRoute()
 const router = useRouter()
@@ -65,6 +69,7 @@ const publishDescription = ref('')
 const publishBaseSuiteId = ref('')
 const runAfterPublish = ref(true)
 const caseStatusFilter = ref<'ALL' | EvaluationRunCase['status']>('ALL')
+const knowledgeBacklogWorkflow = computed(() => readKnowledgeBacklogWorkflow(route.query))
 
 const knowledgeBasesQuery = useQuery({
   queryKey: ['knowledge-bases', 'evaluation-options'],
@@ -524,7 +529,7 @@ function openPublishDialog(): void {
   publishName.value = `知识库评测基线 ${new Intl.DateTimeFormat('zh-CN').format(new Date())}`
   publishDescription.value = '由知识文档自动生成、人工审核后发布的测试评测基线。'
   publishBaseSuiteId.value = selectedSuiteId.value
-  runAfterPublish.value = true
+  runAfterPublish.value = knowledgeBacklogWorkflow.value === null
   publishDialogVisible.value = true
 }
 
@@ -537,7 +542,12 @@ async function publishCandidates(): Promise<void> {
     selectedSuiteId.value = suite.id
     await Promise.all([suitesQuery.refetch(), candidatesQuery.refetch()])
     if (!runAfterPublish.value) {
-      ElMessage.success(`已冻结完整评测套件，共 ${suite.caseCount} 道题`)
+      if (knowledgeBacklogWorkflow.value) {
+        ElMessage.success(`已冻结 ${suite.caseCount} 道题，返回待办后可启动关联验证`)
+        await router.push(knowledgeBacklogReturnRoute(knowledgeBacklogWorkflow.value, suite.id))
+      } else {
+        ElMessage.success(`已冻结完整评测套件，共 ${suite.caseCount} 道题`)
+      }
       return
     }
     try {
@@ -551,6 +561,12 @@ async function publishCandidates(): Promise<void> {
     }
   } catch (error) {
     ElMessage.error(getErrorMessage(error))
+  }
+}
+
+function returnToKnowledgeBacklog(): void {
+  if (knowledgeBacklogWorkflow.value) {
+    void router.push(knowledgeBacklogReturnRoute(knowledgeBacklogWorkflow.value))
   }
 }
 
@@ -718,6 +734,20 @@ function metricDeltaEntries(value?: EvaluationComparison) {
         >
       </div>
     </section>
+
+    <el-alert
+      v-if="knowledgeBacklogWorkflow"
+      class="knowledge-backlog-workflow-alert"
+      title="正在为知识补充待办创建验证题"
+      description="候选题必须逐题审核并发布为冻结套件；发布后将返回原待办，再从质量分析启动关联验证运行。"
+      type="info"
+      show-icon
+      :closable="false"
+    >
+      <template #default>
+        <el-button size="small" @click="returnToKnowledgeBacklog">返回知识待办</el-button>
+      </template>
+    </el-alert>
 
     <section class="evaluation-suite-bar">
       <div>
@@ -1208,7 +1238,7 @@ function metricDeltaEntries(value?: EvaluationComparison) {
     >
       <el-alert
         title="生成结果只进入待审核区，不会自动成为正式内容"
-        description="系统会固定文档版本和内容摘要；文档更新后，未发布候选题会标记为失效。"
+        description="生成会调用当前模型并产生 Token；系统会固定文档版本和内容摘要，文档更新后未发布候选题会标记为失效。"
         type="info"
         show-icon
         :closable="false"
@@ -1344,10 +1374,12 @@ function metricDeltaEntries(value?: EvaluationComparison) {
           <el-input v-model="publishDescription" type="textarea" :rows="3" maxlength="500" />
         </el-form-item>
         <el-form-item label="发布后立即运行完整评测">
-          <el-switch v-model="runAfterPublish" />
-          <span class="candidate-publish-hint"
-            >会调用当前模型并产生 Token；关闭后可稍后手动启动。</span
-          >
+          <el-switch v-model="runAfterPublish" :disabled="Boolean(knowledgeBacklogWorkflow)" />
+          <span class="candidate-publish-hint">{{
+            knowledgeBacklogWorkflow
+              ? '知识待办需返回质量分析启动运行，确保验证被原子关联。'
+              : '会调用当前模型并产生 Token；关闭后可稍后手动启动。'
+          }}</span>
         </el-form-item>
       </el-form>
       <template #footer>

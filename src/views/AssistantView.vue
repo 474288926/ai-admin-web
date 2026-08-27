@@ -21,6 +21,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import AiModelSelector from '@/components/AiModelSelector.vue'
 import AiConversationUsage from '@/components/AiConversationUsage.vue'
 import AiUsageBadge from '@/components/AiUsageBadge.vue'
+import SafeAnswerText from '@/components/SafeAnswerText.vue'
 import * as assistantApi from '@/services/api/assistant'
 import { budgetDecisionMessage, providerFailoverMessage } from '@/services/ai-usage'
 import { getErrorMessage } from '@/services/error-feedback'
@@ -727,9 +728,17 @@ function formatTime(value: string): string {
                       >复制话术</el-button
                     >
                   </header>
-                  <p>{{ message.structuredResponse.customerService.customerFacingReply }}</p>
+                  <SafeAnswerText
+                    as="p"
+                    :text="message.structuredResponse.customerService.customerFacingReply"
+                  />
                 </section>
-                <p v-else class="assistant-answer">{{ message.structuredResponse.answer }}</p>
+                <SafeAnswerText
+                  v-else
+                  as="p"
+                  class="assistant-answer"
+                  :text="message.structuredResponse.answer"
+                />
 
                 <div
                   v-if="message.structuredResponse.steps.length"
@@ -737,7 +746,9 @@ function formatTime(value: string): string {
                 >
                   <strong>内部处理步骤</strong>
                   <ol>
-                    <li v-for="item in message.structuredResponse.steps" :key="item">{{ item }}</li>
+                    <li v-for="item in message.structuredResponse.steps" :key="item">
+                      <SafeAnswerText :text="item" />
+                    </li>
                   </ol>
                 </div>
                 <div
@@ -751,7 +762,7 @@ function formatTime(value: string): string {
                         .internalTroubleshooting"
                       :key="item"
                     >
-                      {{ item }}
+                      <SafeAnswerText :text="item" />
                     </li>
                   </ol>
                 </div>
@@ -762,7 +773,7 @@ function formatTime(value: string): string {
                   <strong>风险提醒</strong>
                   <ul>
                     <li v-for="item in message.structuredResponse.riskWarnings" :key="item">
-                      {{ item }}
+                      <SafeAnswerText :text="item" />
                     </li>
                   </ul>
                 </div>
@@ -777,7 +788,7 @@ function formatTime(value: string): string {
                         .escalationConditions"
                       :key="item"
                     >
-                      {{ item }}
+                      <SafeAnswerText :text="item" />
                     </li>
                   </ul>
                 </div>
@@ -785,14 +796,22 @@ function formatTime(value: string): string {
                   v-if="message.structuredResponse.missingInformation.length"
                   class="assistant-missing"
                 >
-                  <strong>仍需确认：</strong
-                  >{{ message.structuredResponse.missingInformation.join('；') }}
+                  <strong>仍需确认：</strong>
+                  <SafeAnswerText
+                    :text="message.structuredResponse.missingInformation.join('；')"
+                  />
                 </div>
                 <div v-if="message.structuredResponse.refusalReason" class="assistant-refusal">
                   <el-icon><Warning /></el-icon
-                  ><span>{{ message.structuredResponse.refusalReason }}</span>
+                  ><SafeAnswerText :text="message.structuredResponse.refusalReason" />
                 </div>
               </template>
+              <SafeAnswerText
+                v-else-if="message.role === 'ASSISTANT'"
+                as="p"
+                class="assistant-answer"
+                :text="message.content ?? ''"
+              />
               <p v-else class="assistant-answer">{{ message.content }}</p>
 
               <div

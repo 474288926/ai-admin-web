@@ -54,6 +54,10 @@ http://192.168.5.72:5173/login
 npm run build
 ```
 
+### 知识回答外部链接安全
+
+知识助手三个回答入口会把 HTTP/HTTPS 域名和 IPv4 地址转换为安全链接，但不会使用 `v-html`。`cloud.mould.cn`、`nzm.mould.cn` 按精确主机名列入前端白名单，可直接在新标签页打开；其他地址先打开本应用的风险确认页，用户明确确认后才离开。白名单集中维护在 `src/utils/external-links.ts`，子域名不会自动继承信任。
+
 ### Run Unit Tests with [Vitest](https://vitest.dev/)
 
 ```sh

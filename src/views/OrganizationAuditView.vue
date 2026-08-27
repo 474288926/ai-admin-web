@@ -40,6 +40,11 @@ const actionOptions = [
   { value: 'knowledge_base.grant_removed', label: '移除知识库授权' },
   { value: 'document.metadata_updated', label: '更新文档元数据' },
   { value: 'document.version_created', label: '创建文档版本' },
+  { value: 'knowledge_backlog.created', label: '创建知识缺口待办' },
+  { value: 'knowledge_backlog.refreshed', label: '刷新知识缺口证据' },
+  { value: 'knowledge_backlog.reopened', label: '重开知识缺口待办' },
+  { value: 'knowledge_backlog.updated', label: '更新知识缺口待办' },
+  { value: 'knowledge_backlog.verification_started', label: '启动知识缺口验证' },
 ] as const
 
 const actionLabelByValue = new Map<string, string>(
@@ -161,12 +166,16 @@ function entityLabel(entityType: OrganizationAuditEntityType): string {
     ORGANIZATION: '企业',
     KNOWLEDGE_BASE: '知识库',
     DOCUMENT: '文档',
+    KNOWLEDGE_BACKLOG: '知识缺口待办',
   }[entityType]
 }
 
-function entityTagType(entityType: OrganizationAuditEntityType): 'primary' | 'success' | 'warning' {
+function entityTagType(
+  entityType: OrganizationAuditEntityType,
+): 'primary' | 'success' | 'warning' | 'info' {
   if (entityType === 'KNOWLEDGE_BASE') return 'success'
-  return entityType === 'DOCUMENT' ? 'warning' : 'primary'
+  if (entityType === 'DOCUMENT') return 'warning'
+  return entityType === 'KNOWLEDGE_BACKLOG' ? 'info' : 'primary'
 }
 
 function actorName(value: unknown): string {
@@ -254,6 +263,27 @@ function recordSummary(value: unknown): string {
     return `创建版本 V${String(changeValue(record, 'version') ?? '')}`.trim()
   }
   if (record.action === 'document.metadata_updated') return '文档受控元数据已更新'
+  if (
+    record.action === 'knowledge_backlog.created' ||
+    record.action === 'knowledge_backlog.refreshed'
+  ) {
+    return `无答案 ${Number(changeValue(record, 'noAnswerCount') ?? 0)} 次，负反馈 ${Number(changeValue(record, 'unhelpfulCount') ?? 0)} 次`
+  }
+  if (record.action === 'knowledge_backlog.reopened') return '问题复发，待办已恢复为待处理'
+  if (record.action === 'knowledge_backlog.verification_started') return '已创建并关联完整验证运行'
+  if (record.action === 'knowledge_backlog.updated') {
+    const parts: string[] = []
+    const statusTo = changeValue(record, 'statusTo')
+    if (statusTo) parts.push(`状态：${String(statusTo)}`)
+    if (changeValue(record, 'titleChanged')) parts.push('标题已修改')
+    if (changeValue(record, 'noteChanged')) parts.push('备注已修改')
+    if ('dueAtTo' in (record.changes ?? {})) {
+      parts.push(changeValue(record, 'dueAtTo') ? '处理期限已设置' : '处理期限已清除')
+    }
+    if ('linkedDocumentIdTo' in (record.changes ?? {})) parts.push('文档关联已变更')
+    if ('verificationRunIdTo' in (record.changes ?? {})) parts.push('验证关联已变更')
+    return parts.join('，') || '待办版本已更新'
+  }
   if (record.action.includes('department_member') || record.action.includes('group_member')) {
     return '组织单元成员关系已更新'
   }
@@ -307,6 +337,7 @@ function getErrorMessage(error: unknown): string {
             <el-option label="企业" value="ORGANIZATION" />
             <el-option label="知识库" value="KNOWLEDGE_BASE" />
             <el-option label="文档" value="DOCUMENT" />
+            <el-option label="知识缺口待办" value="KNOWLEDGE_BACKLOG" />
           </el-select>
         </el-form-item>
         <el-form-item label="操作类型">

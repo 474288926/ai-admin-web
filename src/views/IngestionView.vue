@@ -65,7 +65,9 @@ const documentsQuery = useQuery({
     documentPage.value,
   ]),
   queryFn: () =>
-    documentsApi.listDocuments(selectedKnowledgeBaseId.value, documentPage.value, PAGE_SIZE),
+    documentsApi.listDocuments(selectedKnowledgeBaseId.value, documentPage.value, PAGE_SIZE, {
+      includeDrafts: true,
+    }),
   enabled: computed(() => Boolean(selectedKnowledgeBaseId.value)),
 })
 
@@ -212,7 +214,16 @@ async function invalidateTasks(): Promise<void> {
 function jobLabel(item: KnowledgeDocument): string {
   const job = item.ingestionJob
   if (!job) return '无任务'
-  if (job.status === 'FAILED') return '处理失败'
+  if (job.status === 'FAILED') {
+    return (
+      {
+        QUEUED: '处理失败',
+        PARSING: '解析失败',
+        EMBEDDING: '向量化失败',
+        COMPLETED: '收尾失败',
+      }[job.stage] ?? '处理失败'
+    )
+  }
   if (job.status === 'CANCELLED') return '已取消'
   if (job.status === 'SUCCEEDED') return '已完成'
   return { QUEUED: '等待处理', PARSING: '解析文档', EMBEDDING: '生成向量', COMPLETED: '完成收尾' }[
@@ -343,7 +354,8 @@ function formatDate(value: string): string {
       <el-tabs v-model="activeTab">
         <el-tab-pane label="文档任务" name="documents">
           <p class="ingestion-tab-help">
-            <el-icon><QuestionFilled /></el-icon>单个文件的失败可以单独重试；“重新索引”会重新生成该文件的检索数据，适合更换向量模型或修复索引后使用。
+            <el-icon><QuestionFilled /></el-icon
+            >单个文件的失败可以单独重试；“重新索引”会重新生成该文件的检索数据，适合更换向量模型或修复索引后使用。
           </p>
           <el-alert
             v-if="documentsQuery.isError.value"
@@ -363,9 +375,19 @@ function formatDate(value: string): string {
                 <el-icon><DocumentIcon /></el-icon>
               </div>
               <div class="job-main">
-                <strong>{{ item.originalName }}</strong
-                ><span
-                  >任务 {{ item.ingestionJob?.id?.slice(0, 8) || '—' }} · 第
+                <div class="job-title">
+                  <strong>{{ item.originalName }}</strong>
+                  <el-tag
+                    v-if="item.lifecycleStatus === 'DRAFT'"
+                    type="warning"
+                    effect="plain"
+                    size="small"
+                    >待发布版本</el-tag
+                  >
+                </div>
+                <span
+                  >版本 {{ item.versionLabel || `V${item.version}` }} · 任务
+                  {{ item.ingestionJob?.id?.slice(0, 8) || '—' }} · 第
                   {{ item.ingestionJob?.attempt ?? 0 }}/{{
                     item.ingestionJob?.maxAttempts ?? 0
                   }}
@@ -440,7 +462,8 @@ function formatDate(value: string): string {
 
         <el-tab-pane label="批量导入" name="batches">
           <p class="ingestion-tab-help">
-            <el-icon><QuestionFilled /></el-icon>批量导入会为每个文件单独记录结果，一个文件失败不会撤销同批次中已经成功的文件；“重试失败项”只提交失败或取消的文件。
+            <el-icon><QuestionFilled /></el-icon
+            >批量导入会为每个文件单独记录结果，一个文件失败不会撤销同批次中已经成功的文件；“重试失败项”只提交失败或取消的文件。
           </p>
           <el-alert
             v-if="batchesQuery.isError.value"

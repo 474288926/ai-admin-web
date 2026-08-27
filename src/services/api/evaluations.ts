@@ -230,6 +230,19 @@ export async function startEvaluationRun(knowledgeBaseId: string, suiteId: strin
   return evaluationRunSchema.parse(result)
 }
 
+export async function startKnowledgeBacklogVerificationRun(
+  knowledgeBaseId: string,
+  suiteId: string,
+  backlogItemId: string,
+  revision: number,
+) {
+  const result = await apiRequest<unknown>(
+    `/knowledge-bases/${knowledgeBaseId}/evaluation-suites/${suiteId}/runs/knowledge-backlog/${backlogItemId}`,
+    { method: 'POST', body: JSON.stringify({ revision }) },
+  )
+  return evaluationRunSchema.parse(result)
+}
+
 export async function cancelEvaluationRun(knowledgeBaseId: string, suiteId: string, runId: string) {
   const result = await apiRequest<unknown>(
     `/knowledge-bases/${knowledgeBaseId}/evaluation-suites/${suiteId}/runs/${runId}/cancel`,

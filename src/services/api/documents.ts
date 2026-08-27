@@ -76,6 +76,10 @@ const paginatedDocumentsSchema = z.object({
   }),
 })
 
+export interface ListDocumentsOptions {
+  includeDrafts?: boolean
+}
+
 export const documentBatchSchema = z.object({
   id: z.uuid(),
   knowledgeBaseId: z.uuid(),
@@ -109,8 +113,10 @@ export async function listDocuments(
   knowledgeBaseId: string,
   page: number,
   pageSize: number,
+  options: ListDocumentsOptions = {},
 ): Promise<PaginatedDocuments> {
   const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) })
+  if (options.includeDrafts) params.set('includeDrafts', 'true')
   const result = await apiRequest<unknown>(
     `/knowledge-bases/${knowledgeBaseId}/documents?${params}`,
   )

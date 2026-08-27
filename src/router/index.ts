@@ -42,6 +42,12 @@ const routes: RouteRecordRaw[] = [
     meta: { public: true, title: '企业知识入口' },
   },
   {
+    path: '/external-link-warning',
+    name: 'external-link-warning',
+    component: () => import('@/views/ExternalLinkWarningView.vue'),
+    meta: { public: true, title: '外部链接风险提示' },
+  },
+  {
     path: '/ask',
     name: 'employee-assistant',
     component: () => import('@/views/EmployeeAssistantView.vue'),

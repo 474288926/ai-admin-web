@@ -13,6 +13,7 @@ import { ElMessage } from 'element-plus'
 
 import AiModelSelector from '@/components/AiModelSelector.vue'
 import AiUsageBadge from '@/components/AiUsageBadge.vue'
+import SafeAnswerText from '@/components/SafeAnswerText.vue'
 import * as assistantApi from '@/services/api/assistant'
 import { ApiError } from '@/services/api/client'
 import { budgetDecisionMessage, providerFailoverMessage } from '@/services/ai-usage'
@@ -330,24 +331,28 @@ onBeforeUnmount(() => window.removeEventListener('message', handleWorkbenchMessa
         </div>
         <el-button :icon="CopyDocument" link @click="copyReply">复制</el-button>
       </header>
-      <p>{{ customerReply }}</p>
+      <SafeAnswerText as="p" :text="customerReply" />
 
       <details v-if="internalSteps.length" open>
         <summary>内部排查步骤</summary>
         <ol>
-          <li v-for="item in internalSteps" :key="item">{{ item }}</li>
+          <li v-for="item in internalSteps" :key="item"><SafeAnswerText :text="item" /></li>
         </ol>
       </details>
       <details v-if="escalationConditions.length">
         <summary>升级条件</summary>
         <ul>
-          <li v-for="item in escalationConditions" :key="item">{{ item }}</li>
+          <li v-for="item in escalationConditions" :key="item">
+            <SafeAnswerText :text="item" />
+          </li>
         </ul>
       </details>
       <details v-if="prohibitedCommitments.length" class="is-warning">
         <summary>禁止承诺</summary>
         <ul>
-          <li v-for="item in prohibitedCommitments" :key="item">{{ item }}</li>
+          <li v-for="item in prohibitedCommitments" :key="item">
+            <SafeAnswerText :text="item" />
+          </li>
         </ul>
       </details>
 

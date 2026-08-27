@@ -27,6 +27,27 @@ button,
 input {
   font: inherit;
 }
+.safe-answer-link {
+  color: #2f69bd;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  text-decoration: underline;
+  text-decoration-color: rgba(47, 105, 189, 0.38);
+  text-underline-offset: 2px;
+}
+.safe-answer-link:hover {
+  color: #1d55a6;
+  text-decoration-color: currentcolor;
+}
+.safe-answer-link.is-trusted {
+  color: #287b52;
+  text-decoration-color: rgba(40, 123, 82, 0.4);
+}
+.safe-answer-link::after {
+  margin-left: 2px;
+  content: '↗';
+  font-size: 0.8em;
+}
 
 .eyebrow {
   display: block;
@@ -1561,10 +1582,85 @@ input {
 .backlog-toolbar {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
 }
 .backlog-toolbar .el-select {
-  width: 118px;
+  width: 124px;
+}
+.backlog-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+  padding: 0 18px 16px;
+}
+.backlog-overview-grid button {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid #e7ebf2;
+  border-radius: 9px;
+  color: #6d7b90;
+  background: #fafbfe;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.18s ease,
+    transform 0.18s ease;
+}
+.backlog-overview-grid button:hover,
+.backlog-overview-grid button:focus-visible {
+  border-color: #9bb7e8;
+  outline: none;
+  transform: translateY(-1px);
+}
+.backlog-overview-grid button > span {
+  font-size: 10px;
+  font-weight: 600;
+}
+.backlog-overview-grid button > strong {
+  color: #354965;
+  font-size: 22px;
+}
+.backlog-overview-grid button > small {
+  overflow: hidden;
+  color: #929cad;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.backlog-overview-grid button.is-critical > strong {
+  color: #d45151;
+}
+.backlog-overview-grid button.is-ready > strong {
+  color: #3d8a67;
+}
+.backlog-overview-grid button.is-overdue > strong {
+  color: #d45151;
+}
+.backlog-overview-alert {
+  margin: 0 18px 16px;
+}
+.backlog-list-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 18px 16px;
+}
+.backlog-list-actions .el-input {
+  width: min(420px, 100%);
+}
+.backlog-pagination {
+  justify-content: flex-end;
+  padding: 16px 18px 0;
+}
+.backlog-batch-description {
+  margin: 0 0 16px;
+  color: #697991;
+  font-size: 11px;
+  line-height: 1.7;
 }
 .backlog-preview-meta {
   display: flex;
@@ -1649,8 +1745,74 @@ input {
 }
 .backlog-issue-table .quality-issue-header,
 .backlog-issue-table .quality-issue-row {
-  grid-template-columns: minmax(190px, 1.2fr) 75px 75px 120px minmax(190px, 1.2fr) 118px;
-  min-width: 980px;
+  grid-template-columns:
+    36px minmax(190px, 1.2fr) 140px 130px 75px 75px 120px minmax(210px, 1.15fr)
+    minmax(210px, 1.15fr) 118px;
+  min-width: 1550px;
+}
+.backlog-document-cell {
+  display: grid;
+  gap: 5px;
+  align-items: start;
+}
+.backlog-identity-cell {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  justify-items: start;
+}
+.backlog-identity-cell strong,
+.backlog-identity-cell code {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.backlog-identity-cell strong {
+  color: #354863;
+  font-size: 11px;
+}
+.backlog-identity-cell .el-button {
+  height: auto;
+  padding: 0;
+  font-size: 10px;
+}
+.backlog-priority-cell {
+  display: grid;
+  gap: 5px;
+  justify-items: start;
+}
+.backlog-priority-cell small {
+  color: #7e8a9e;
+  font-size: 9px;
+}
+.backlog-deadline-cell {
+  display: grid;
+  gap: 5px;
+  justify-items: start;
+}
+.backlog-deadline-cell small,
+.backlog-form-help {
+  color: #7e8a9e;
+  font-size: 9px;
+}
+.backlog-document-cell .el-tag {
+  width: fit-content;
+}
+.backlog-verification-cell {
+  display: grid;
+  gap: 5px;
+  align-items: start;
+}
+.backlog-verification-cell .el-tag {
+  width: fit-content;
+}
+.backlog-verification-cell small {
+  overflow: hidden;
+  color: #768399;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .quality-guidance {
   display: grid;
@@ -2323,6 +2485,118 @@ input {
   margin-left: 10px;
   color: #7b879c;
   font-size: 12px;
+}
+.knowledge-backlog-workflow-alert .el-alert__content {
+  width: 100%;
+}
+.knowledge-backlog-workflow-alert .el-alert__description {
+  margin-right: 12px;
+}
+.backlog-issue-table .quality-issue-row.is-workflow-target {
+  background: #f0f7ff;
+  box-shadow: inset 3px 0 #409eff;
+}
+.backlog-editor-summary {
+  display: grid;
+  gap: 9px;
+  padding: 14px;
+  border: 1px solid #e2e8f1;
+  border-radius: 10px;
+  background: #f8faff;
+}
+.backlog-editor-summary > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.backlog-editor-summary code {
+  overflow-wrap: anywhere;
+  color: #4f6079;
+  font-size: 10px;
+}
+.backlog-editor-summary small {
+  color: #8994a5;
+  font-size: 10px;
+  line-height: 1.6;
+}
+.backlog-editor-form {
+  margin-top: 18px;
+}
+.backlog-editor-recommendation p {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: #34547d;
+  background: #eef5ff;
+  font-size: 12px;
+  font-weight: 600;
+}
+.backlog-editor-section {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #e8ecf2;
+}
+.backlog-editor-section > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.backlog-editor-section > header strong {
+  color: #344761;
+  font-size: 12px;
+}
+.backlog-editor-section > header span {
+  color: #929cab;
+  font-size: 10px;
+}
+.backlog-reason-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.backlog-editor-timeline > div,
+.backlog-editor-readiness > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #78859a;
+  font-size: 11px;
+}
+.backlog-editor-timeline > div strong {
+  color: #465875;
+  font-size: 11px;
+}
+.backlog-editor-readiness > div {
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+.backlog-editor-readiness > div > span {
+  line-height: 1.6;
+}
+.backlog-editor-history .el-timeline {
+  margin: 0;
+  padding-left: 8px;
+}
+.backlog-editor-history .el-timeline-item__timestamp {
+  color: #929cad;
+  font-size: 9px;
+}
+.backlog-editor-history .el-timeline-item__content {
+  color: #465875;
+  font-size: 11px;
+}
+.backlog-editor-history .el-timeline-item__content p {
+  margin: 5px 0;
+  color: #66758b;
+  line-height: 1.6;
+}
+.backlog-editor-history .el-timeline-item__content small {
+  color: #96a0af;
+  font-size: 9px;
 }
 .candidate-generation-options,
 .candidate-edit-grid {
@@ -3014,11 +3288,21 @@ input {
   min-width: 0;
   flex-direction: column;
 }
+.job-title {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
 .job-main strong {
+  min-width: 0;
   overflow: hidden;
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.job-title .el-tag {
+  flex: none;
 }
 .job-main span,
 .job-time span {
@@ -5726,6 +6010,9 @@ input {
   .quality-grid {
     grid-template-columns: 1fr;
   }
+  .backlog-overview-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
   .evaluations-hero {
     align-items: stretch;
     flex-direction: column;
@@ -6149,6 +6436,16 @@ input {
   .quality-panel-head {
     align-items: flex-start;
     flex-direction: column;
+  }
+  .backlog-list-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .backlog-list-actions .el-input {
+    width: 100%;
+  }
+  .backlog-overview-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .quality-guidance {
     grid-template-columns: 38px 1fr;

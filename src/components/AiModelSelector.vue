@@ -70,7 +70,11 @@ watch(selectedModelId, (modelId) => {
           <span>
             {{ model.displayName }}
             <small v-if="model.pricing" class="ai-model-price">
-              {{ model.pricing.currency === 'CNY' ? '¥' : '$' }}{{ model.pricing.inputPerMillionTokens }}/{{ model.pricing.outputPerMillionTokens }} / 百万输入/输出
+              {{ model.pricing.currency === 'CNY' ? '¥' : '$'
+              }}{{ model.pricing.inputPerMillionTokens }}/{{
+                model.pricing.outputPerMillionTokens
+              }}
+              / 百万输入/输出
             </small>
           </span>
           <el-tag v-if="model.isDefault" size="small" effect="plain">默认</el-tag>

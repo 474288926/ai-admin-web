@@ -75,14 +75,11 @@ const configurationDescriptions: Record<string, string> = {
     '向量维度是每条数字特征的长度，必须和数据库向量字段一致；改错会导致文档入库或检索失败。',
   embeddingBatch:
     '一次发送给模型的文本条数。调大通常更快，但会占用更多内存，也可能触发服务商限流。',
-  timeout:
-    '系统等待模型返回的最长时间。调大能减少慢请求失败，但用户需要等待更久；调小会更快失败。',
+  timeout: '系统等待模型返回的最长时间。调大能减少慢请求失败，但用户需要等待更久；调小会更快失败。',
   outputTokens:
     '模型一次最多生成多少词元，中文可粗略理解为文字容量。过小会截断答案，过大则增加耗时和费用。',
-  context:
-    '回答时带入的历史消息数量。越大越能记住上下文，但会增加模型输入长度、耗时和费用。',
-  rateLimit:
-    '同一用户在一段时间内最多能调用 AI 的次数，用于防止误操作、程序循环或高额费用。',
+  context: '回答时带入的历史消息数量。越大越能记住上下文，但会增加模型输入长度、耗时和费用。',
+  rateLimit: '同一用户在一段时间内最多能调用 AI 的次数，用于防止误操作、程序循环或高额费用。',
   retrievalMode:
     '向量检索理解相近意思，关键词检索擅长产品型号和错误码，混合检索同时使用两者，通常更稳妥。',
   candidateMultiplier:
@@ -91,28 +88,23 @@ const configurationDescriptions: Record<string, string> = {
     '向量结果与问题的相似程度门槛。调高会更严格、减少无关内容，也可能漏掉表达不同但正确的文档。',
   keywordScore:
     '关键词匹配的最低分数。调高能减少错误码或型号不匹配的结果，调低则更容易召回相关变体。',
-  rrf:
-    '混合检索合并多种排序结果时的平滑常量，主要影响不同检索方式之间的权重，通常不建议随意修改。',
+  rrf: '混合检索合并多种排序结果时的平滑常量，主要影响不同检索方式之间的权重，通常不建议随意修改。',
   evidence:
     '证据分决定检索内容是否足以支持回答。最低证据分是放行线，强证据分是“非常确定”标记，强证据分必须更高。',
-  rerank:
-    '重排会对初步召回结果再次排序并过滤证据不足的内容，关闭后结果更快但更容易混入无关片段。',
+  rerank: '重排会对初步召回结果再次排序并过滤证据不足的内容，关闭后结果更快但更容易混入无关片段。',
   structured:
     '结构化回答要求模型按固定字段返回答案、步骤、引用和拒答原因，便于系统校验和稳定展示。',
   reasoning:
     '推理强度影响模型思考深度。提高可能改善复杂问题，但会增加响应时间和费用；普通问答通常使用 minimal。',
-  safety:
-    '客服安全规则用于拦截价格承诺、交付承诺、赔偿和兼容性保证等高风险表达，建议保持开启。',
-  citation:
-    '引用摘录是回答中展示的原文证据片段。字数过小不易核对，过大则会让页面和回答变长。',
+  safety: '客服安全规则用于拦截价格承诺、交付承诺、赔偿和兼容性保证等高风险表达，建议保持开启。',
+  citation: '引用摘录是回答中展示的原文证据片段。字数过小不易核对，过大则会让页面和回答变长。',
   conflict:
     '冲突检测用于发现不同文档对版本、数值或步骤的说法不一致，发现冲突时系统会要求人工确认。',
   multiturn:
     '多轮查询改写会把“那它呢”这类追问补全成独立问题。上下文条数越多，理解连续对话越好，但成本越高。',
   chunk:
     '切片是把长文档拆成检索片段。切片太大不易精准命中，太小会丢失上下文；重叠字符用于连接相邻片段。',
-  ocr:
-    'OCR 把扫描 PDF 的图片识别成文字，需要视觉模型并会产生额外费用；普通可复制文字 PDF 不需要开启。',
+  ocr: 'OCR 把扫描 PDF 的图片识别成文字，需要视觉模型并会产生额外费用；普通可复制文字 PDF 不需要开启。',
   pipeline:
     '文档处理 Worker 负责后台解析、切片和向量化。关闭后任务会停留在队列中，上传接口本身仍可能成功。',
   evaluation:
@@ -426,10 +418,17 @@ async function refreshConfiguration(): Promise<void> {
             }}</el-tag>
           </header>
           <div class="settings-row">
-            <span>模型提供方 <el-tooltip :content="configurationDescription('provider')"><el-icon><QuestionFilled /></el-icon></el-tooltip></span><strong>{{ configuration.ai.provider }}</strong>
+            <span
+              >模型提供方
+              <el-tooltip :content="configurationDescription('provider')"
+                ><el-icon><QuestionFilled /></el-icon></el-tooltip></span
+            ><strong>{{ configuration.ai.provider }}</strong>
           </div>
           <div class="settings-row">
-            <span>默认生成模型 <el-tooltip :content="configurationDescription('defaultModel')"><el-icon><QuestionFilled /></el-icon></el-tooltip></span
+            <span
+              >默认生成模型
+              <el-tooltip :content="configurationDescription('defaultModel')"
+                ><el-icon><QuestionFilled /></el-icon></el-tooltip></span
             ><strong>{{ configuration.ai.defaultModel ?? '未配置' }}</strong>
           </div>
           <div class="settings-row settings-models-row">
@@ -441,8 +440,8 @@ async function refreshConfiguration(): Promise<void> {
                 :type="model.isDefault ? 'success' : 'info'"
                 effect="plain"
               >
-                {{ model.displayName || providerLabel(model.provider) }} · {{ model.model ?? '模型名未配置' }}
-                {{ model.isDefault ? '（默认）' : '' }} ·
+                {{ model.displayName || providerLabel(model.provider) }} ·
+                {{ model.model ?? '模型名未配置' }} {{ model.isDefault ? '（默认）' : '' }} ·
                 {{ model.credentialConfigured ? '凭据已配置' : '凭据未配置' }}
               </el-tag>
               <span v-if="enabledModels.length === 0">暂无启用模型</span>
@@ -457,31 +456,49 @@ async function refreshConfiguration(): Promise<void> {
             >
           </div>
           <div class="settings-row">
-            <span>向量模型 <el-tooltip :content="configurationDescription('embedding')"><el-icon><QuestionFilled /></el-icon></el-tooltip></span><strong>{{ configuration.ai.embeddingModel }}</strong>
+            <span
+              >向量模型
+              <el-tooltip :content="configurationDescription('embedding')"
+                ><el-icon><QuestionFilled /></el-icon></el-tooltip></span
+            ><strong>{{ configuration.ai.embeddingModel }}</strong>
           </div>
           <div class="settings-row">
-            <span>向量维度 / 批量 <el-tooltip :content="`${configurationDescription('embeddingDimensions')} ${configurationDescription('embeddingBatch')}`"><el-icon><QuestionFilled /></el-icon></el-tooltip></span
+            <span
+              >向量维度 / 批量
+              <el-tooltip
+                :content="`${configurationDescription('embeddingDimensions')} ${configurationDescription('embeddingBatch')}`"
+                ><el-icon><QuestionFilled /></el-icon></el-tooltip></span
             ><strong
               >{{ configuration.ai.embeddingDimensions }} /
               {{ configuration.ai.embeddingBatchSize }}</strong
             >
           </div>
           <div class="settings-row">
-            <span>超时 / 重试 <el-tooltip :content="configurationDescription('timeout')"><el-icon><QuestionFilled /></el-icon></el-tooltip></span
+            <span
+              >超时 / 重试
+              <el-tooltip :content="configurationDescription('timeout')"
+                ><el-icon><QuestionFilled /></el-icon></el-tooltip></span
             ><strong
               >{{ milliseconds(configuration.ai.requestTimeoutMs) }} /
               {{ configuration.ai.maxRetries }} 次</strong
             >
           </div>
           <div class="settings-row">
-            <span>输出 Token / 上下文 <el-tooltip :content="`${configurationDescription('outputTokens')} ${configurationDescription('context')}`"><el-icon><QuestionFilled /></el-icon></el-tooltip></span
+            <span
+              >输出 Token / 上下文
+              <el-tooltip
+                :content="`${configurationDescription('outputTokens')} ${configurationDescription('context')}`"
+                ><el-icon><QuestionFilled /></el-icon></el-tooltip></span
             ><strong
               >{{ configuration.ai.maxOutputTokens }} /
               {{ configuration.ai.contextMessageLimit }} 条</strong
             >
           </div>
           <div class="settings-row">
-            <span>用户调用限制 <el-tooltip :content="configurationDescription('rateLimit')"><el-icon><QuestionFilled /></el-icon></el-tooltip></span
+            <span
+              >用户调用限制
+              <el-tooltip :content="configurationDescription('rateLimit')"
+                ><el-icon><QuestionFilled /></el-icon></el-tooltip></span
             ><strong
               >{{ configuration.ai.userRateLimit }} 次 /
               {{ configuration.ai.rateLimitWindowSeconds }} 秒</strong
@@ -501,39 +518,67 @@ async function refreshConfiguration(): Promise<void> {
             <el-tag effect="light">{{ retrievalModeLabel(configuration.retrieval.mode) }}</el-tag>
           </header>
           <div class="settings-row">
-            <span>检索驱动 <el-tooltip content="memory 适合小规模临时测试；pgvector 使用 PostgreSQL 向量索引，适合长期运行。"><el-icon><QuestionFilled /></el-icon></el-tooltip></span><strong>{{ configuration.retrieval.driver }}</strong>
+            <span
+              >检索驱动
+              <el-tooltip
+                content="memory 适合小规模临时测试；pgvector 使用 PostgreSQL 向量索引，适合长期运行。"
+                ><el-icon><QuestionFilled /></el-icon></el-tooltip></span
+            ><strong>{{ configuration.retrieval.driver }}</strong>
           </div>
           <div class="settings-row">
-            <span>关键词候选倍数 <el-tooltip :content="configurationDescription('candidateMultiplier')"><el-icon><QuestionFilled /></el-icon></el-tooltip></span
+            <span
+              >关键词候选倍数
+              <el-tooltip :content="configurationDescription('candidateMultiplier')"
+                ><el-icon><QuestionFilled /></el-icon></el-tooltip></span
             ><strong>{{ configuration.retrieval.keywordCandidateMultiplier }}×</strong>
           </div>
           <div class="settings-row">
-            <span>向量最低相似度 <el-tooltip :content="configurationDescription('similarity')"><el-icon><QuestionFilled /></el-icon></el-tooltip></span
+            <span
+              >向量最低相似度
+              <el-tooltip :content="configurationDescription('similarity')"
+                ><el-icon><QuestionFilled /></el-icon></el-tooltip></span
             ><strong>{{ configuration.retrieval.minimumSimilarity }}</strong>
           </div>
           <div class="settings-row">
-            <span>关键词最低分 <el-tooltip :content="configurationDescription('keywordScore')"><el-icon><QuestionFilled /></el-icon></el-tooltip></span
+            <span
+              >关键词最低分
+              <el-tooltip :content="configurationDescription('keywordScore')"
+                ><el-icon><QuestionFilled /></el-icon></el-tooltip></span
             ><strong>{{ configuration.retrieval.keywordMinimumScore }}</strong>
           </div>
           <div class="settings-row">
-            <span>RRF 常量 <el-tooltip :content="configurationDescription('rrf')"><el-icon><QuestionFilled /></el-icon></el-tooltip></span><strong>{{ configuration.retrieval.rrfK }}</strong>
+            <span
+              >RRF 常量
+              <el-tooltip :content="configurationDescription('rrf')"
+                ><el-icon><QuestionFilled /></el-icon></el-tooltip></span
+            ><strong>{{ configuration.retrieval.rrfK }}</strong>
           </div>
           <div class="settings-row">
-            <span>重排 / 候选倍数 <el-tooltip :content="configurationDescription('rerank')"><el-icon><QuestionFilled /></el-icon></el-tooltip></span
+            <span
+              >重排 / 候选倍数
+              <el-tooltip :content="configurationDescription('rerank')"
+                ><el-icon><QuestionFilled /></el-icon></el-tooltip></span
             ><strong
               >{{ booleanText(configuration.retrieval.rerankEnabled) }} /
               {{ configuration.retrieval.rerankCandidateMultiplier }}×</strong
             >
           </div>
           <div class="settings-row">
-            <span>最低 / 强证据分 <el-tooltip :content="configurationDescription('evidence')"><el-icon><QuestionFilled /></el-icon></el-tooltip></span
+            <span
+              >最低 / 强证据分
+              <el-tooltip :content="configurationDescription('evidence')"
+                ><el-icon><QuestionFilled /></el-icon></el-tooltip></span
             ><strong
               >{{ configuration.retrieval.minimumEvidenceScore }} /
               {{ configuration.retrieval.strongEvidenceScore }}</strong
             >
           </div>
           <div class="settings-row">
-            <span>AI 查询改写 / 可回答性 <el-tooltip content="查询改写会把口语问题整理成更适合检索的表达；可回答性会判断证据是否足以回答。开启 AI 辅助会增加模型调用和费用。"><el-icon><QuestionFilled /></el-icon></el-tooltip></span
+            <span
+              >AI 查询改写 / 可回答性
+              <el-tooltip
+                content="查询改写会把口语问题整理成更适合检索的表达；可回答性会判断证据是否足以回答。开启 AI 辅助会增加模型调用和费用。"
+                ><el-icon><QuestionFilled /></el-icon></el-tooltip></span
             ><strong
               >{{ booleanText(configuration.retrieval.queryRewriteAiEnabled) }} /
               {{ booleanText(configuration.retrieval.answerabilityAiEnabled) }}</strong
@@ -553,7 +598,10 @@ async function refreshConfiguration(): Promise<void> {
             <el-tag type="warning" effect="light">{{ configuration.rag.promptVersion }}</el-tag>
           </header>
           <div class="settings-row">
-            <span>结构化回答 <el-tooltip :content="configurationDescription('structured')"><el-icon><QuestionFilled /></el-icon></el-tooltip></span
+            <span
+              >结构化回答
+              <el-tooltip :content="configurationDescription('structured')"
+                ><el-icon><QuestionFilled /></el-icon></el-tooltip></span
             ><el-tag
               :type="booleanType(configuration.rag.structuredResponseEnabled)"
               size="small"
@@ -561,31 +609,47 @@ async function refreshConfiguration(): Promise<void> {
             >
           </div>
           <div class="settings-row">
-            <span>推理强度 <el-tooltip :content="configurationDescription('reasoning')"><el-icon><QuestionFilled /></el-icon></el-tooltip></span><strong>{{ configuration.rag.reasoningEffort }}</strong>
+            <span
+              >推理强度
+              <el-tooltip :content="configurationDescription('reasoning')"
+                ><el-icon><QuestionFilled /></el-icon></el-tooltip></span
+            ><strong>{{ configuration.rag.reasoningEffort }}</strong>
           </div>
           <div class="settings-row">
-            <span>客服安全规则 / AI 辅助 <el-tooltip :content="configurationDescription('safety')"><el-icon><QuestionFilled /></el-icon></el-tooltip></span
+            <span
+              >客服安全规则 / AI 辅助
+              <el-tooltip :content="configurationDescription('safety')"
+                ><el-icon><QuestionFilled /></el-icon></el-tooltip></span
             ><strong
               >{{ booleanText(configuration.rag.customerSafetyEnabled) }} /
               {{ booleanText(configuration.rag.customerSafetyAiEnabled) }}</strong
             >
           </div>
           <div class="settings-row">
-            <span>引用摘录 <el-tooltip :content="configurationDescription('citation')"><el-icon><QuestionFilled /></el-icon></el-tooltip></span
+            <span
+              >引用摘录
+              <el-tooltip :content="configurationDescription('citation')"
+                ><el-icon><QuestionFilled /></el-icon></el-tooltip></span
             ><strong
               >{{ booleanText(configuration.rag.citationExcerptEnabled) }} · 最多
               {{ configuration.rag.citationExcerptMaxChars }} 字</strong
             >
           </div>
           <div class="settings-row">
-            <span>冲突检测 / AI 辅助 <el-tooltip :content="configurationDescription('conflict')"><el-icon><QuestionFilled /></el-icon></el-tooltip></span
+            <span
+              >冲突检测 / AI 辅助
+              <el-tooltip :content="configurationDescription('conflict')"
+                ><el-icon><QuestionFilled /></el-icon></el-tooltip></span
             ><strong
               >{{ booleanText(configuration.rag.conflictDetectionEnabled) }} /
               {{ booleanText(configuration.rag.conflictDetectionAiEnabled) }}</strong
             >
           </div>
           <div class="settings-row">
-            <span>多轮查询改写 <el-tooltip :content="configurationDescription('multiturn')"><el-icon><QuestionFilled /></el-icon></el-tooltip></span
+            <span
+              >多轮查询改写
+              <el-tooltip :content="configurationDescription('multiturn')"
+                ><el-icon><QuestionFilled /></el-icon></el-tooltip></span
             ><strong
               >{{ booleanText(configuration.rag.multiTurnQueryRewriteEnabled) }} ·
               {{ configuration.rag.multiTurnHistoryMessageLimit }} 条上下文</strong
@@ -625,7 +689,10 @@ async function refreshConfiguration(): Promise<void> {
             </div>
           </div>
           <div class="settings-row">
-            <span>切片 / 重叠字符 <el-tooltip :content="configurationDescription('chunk')"><el-icon><QuestionFilled /></el-icon></el-tooltip></span
+            <span
+              >切片 / 重叠字符
+              <el-tooltip :content="configurationDescription('chunk')"
+                ><el-icon><QuestionFilled /></el-icon></el-tooltip></span
             ><strong
               >{{ configuration.documents.chunkSizeChars }} /
               {{ configuration.documents.chunkOverlapChars }}</strong
@@ -636,7 +703,10 @@ async function refreshConfiguration(): Promise<void> {
             ><strong>{{ milliseconds(configuration.documents.processingTimeoutMs) }}</strong>
           </div>
           <div class="settings-row">
-            <span>OCR <el-tooltip :content="configurationDescription('ocr')"><el-icon><QuestionFilled /></el-icon></el-tooltip></span
+            <span
+              >OCR
+              <el-tooltip :content="configurationDescription('ocr')"
+                ><el-icon><QuestionFilled /></el-icon></el-tooltip></span
             ><strong
               >{{ booleanText(configuration.documents.ocrEnabled)
               }}<template v-if="configuration.documents.ocrModel">
@@ -645,7 +715,10 @@ async function refreshConfiguration(): Promise<void> {
             >
           </div>
           <div class="settings-row">
-            <span>处理任务 / 自动恢复 <el-tooltip :content="configurationDescription('pipeline')"><el-icon><QuestionFilled /></el-icon></el-tooltip></span
+            <span
+              >处理任务 / 自动恢复
+              <el-tooltip :content="configurationDescription('pipeline')"
+                ><el-icon><QuestionFilled /></el-icon></el-tooltip></span
             ><strong
               >{{ booleanText(configuration.documents.pipelineWorkerEnabled) }} /
               {{ booleanText(configuration.documents.pipelineRecoveryEnabled) }}</strong
@@ -666,7 +739,10 @@ async function refreshConfiguration(): Promise<void> {
         </div>
         <div class="settings-operation-grid">
           <div>
-            <span>评测执行器 <el-tooltip :content="configurationDescription('evaluation')"><el-icon><QuestionFilled /></el-icon></el-tooltip></span
+            <span
+              >评测执行器
+              <el-tooltip :content="configurationDescription('evaluation')"
+                ><el-icon><QuestionFilled /></el-icon></el-tooltip></span
             ><strong>{{ booleanText(configuration.evaluation.workerEnabled) }}</strong
             ><small>{{ configuration.evaluation.pollingIntervalMs }} ms 轮询</small>
           </div>
@@ -826,7 +902,11 @@ async function refreshConfiguration(): Promise<void> {
     <el-dialog v-model="editVisible" title="编辑系统配置" width="min(620px, calc(100vw - 32px))">
       <el-form label-position="top">
         <el-form-item required>
-          <template #label>默认生成模型 <el-tooltip :content="configurationDescription('defaultModel')"><el-icon><QuestionFilled /></el-icon></el-tooltip></template>
+          <template #label
+            >默认生成模型
+            <el-tooltip :content="configurationDescription('defaultModel')"
+              ><el-icon><QuestionFilled /></el-icon></el-tooltip
+          ></template>
           <el-select v-model="editForm.aiDefaultModelId" style="width: 100%">
             <el-option
               v-for="model in configurableModels"
@@ -837,7 +917,11 @@ async function refreshConfiguration(): Promise<void> {
           </el-select>
         </el-form-item>
         <el-form-item required>
-          <template #label>Prompt 版本 <el-tooltip :content="configurationDescription('prompt')"><el-icon><QuestionFilled /></el-icon></el-tooltip></template>
+          <template #label
+            >Prompt 版本
+            <el-tooltip :content="configurationDescription('prompt')"
+              ><el-icon><QuestionFilled /></el-icon></el-tooltip
+          ></template>
           <el-select v-model="editForm.ragPromptVersion" style="width: 100%">
             <el-option
               v-for="prompt in configuration?.rag.availablePromptVersions ?? []"
@@ -849,7 +933,11 @@ async function refreshConfiguration(): Promise<void> {
         </el-form-item>
         <div class="settings-edit-grid">
           <el-form-item required>
-            <template #label>最大输出 Token <el-tooltip :content="configurationDescription('outputTokens')"><el-icon><QuestionFilled /></el-icon></el-tooltip></template>
+            <template #label
+              >最大输出 Token
+              <el-tooltip :content="configurationDescription('outputTokens')"
+                ><el-icon><QuestionFilled /></el-icon></el-tooltip
+            ></template>
             <el-input-number
               v-model="editForm.aiMaxOutputTokens"
               :min="1"
@@ -859,7 +947,11 @@ async function refreshConfiguration(): Promise<void> {
             />
           </el-form-item>
           <el-form-item required>
-            <template #label>上下文消息数 <el-tooltip :content="configurationDescription('context')"><el-icon><QuestionFilled /></el-icon></el-tooltip></template>
+            <template #label
+              >上下文消息数
+              <el-tooltip :content="configurationDescription('context')"
+                ><el-icon><QuestionFilled /></el-icon></el-tooltip
+            ></template>
             <el-input-number
               v-model="editForm.aiContextMessageLimit"
               :min="1"
@@ -868,7 +960,11 @@ async function refreshConfiguration(): Promise<void> {
             />
           </el-form-item>
           <el-form-item required>
-            <template #label>关键词最低分 <el-tooltip :content="configurationDescription('keywordScore')"><el-icon><QuestionFilled /></el-icon></el-tooltip></template>
+            <template #label
+              >关键词最低分
+              <el-tooltip :content="configurationDescription('keywordScore')"
+                ><el-icon><QuestionFilled /></el-icon></el-tooltip
+            ></template>
             <el-input-number
               v-model="editForm.retrievalKeywordMinimumScore"
               :min="0"
@@ -878,7 +974,11 @@ async function refreshConfiguration(): Promise<void> {
             />
           </el-form-item>
           <el-form-item required>
-            <template #label>向量最低相似度 <el-tooltip :content="configurationDescription('similarity')"><el-icon><QuestionFilled /></el-icon></el-tooltip></template>
+            <template #label
+              >向量最低相似度
+              <el-tooltip :content="configurationDescription('similarity')"
+                ><el-icon><QuestionFilled /></el-icon></el-tooltip
+            ></template>
             <el-input-number
               v-model="editForm.retrievalMinimumSimilarity"
               :min="-1"
@@ -888,7 +988,11 @@ async function refreshConfiguration(): Promise<void> {
             />
           </el-form-item>
           <el-form-item required>
-            <template #label>最低证据分 <el-tooltip :content="configurationDescription('evidence')"><el-icon><QuestionFilled /></el-icon></el-tooltip></template>
+            <template #label
+              >最低证据分
+              <el-tooltip :content="configurationDescription('evidence')"
+                ><el-icon><QuestionFilled /></el-icon></el-tooltip
+            ></template>
             <el-input-number
               v-model="editForm.rerankMinimumEvidenceScore"
               :min="0"
@@ -898,7 +1002,11 @@ async function refreshConfiguration(): Promise<void> {
             />
           </el-form-item>
           <el-form-item required>
-            <template #label>强证据分 <el-tooltip :content="configurationDescription('evidence')"><el-icon><QuestionFilled /></el-icon></el-tooltip></template>
+            <template #label
+              >强证据分
+              <el-tooltip :content="configurationDescription('evidence')"
+                ><el-icon><QuestionFilled /></el-icon></el-tooltip
+            ></template>
             <el-input-number
               v-model="editForm.rerankStrongEvidenceScore"
               :min="0"

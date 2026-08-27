@@ -680,7 +680,9 @@ function formatDate(value: string): string {
         @drop.prevent="handleDrop"
       >
         <el-icon><UploadFilled /></el-icon><strong>拖放文件到这里，或点击选择文件</strong
-        ><span>支持 TXT、MD、PDF、DOCX、XLSX · 单文件 ≤ 20 MB · 每批 ≤ 20 个 · 总大小 ≤ 100 MB</span>
+        ><span
+          >支持 TXT、MD、PDF、DOCX、XLSX · 单文件 ≤ 20 MB · 每批 ≤ 20 个 · 总大小 ≤ 100 MB</span
+        >
       </button>
       <div v-if="selectedFiles.length" class="selected-files">
         <div class="selected-files-title">
@@ -725,39 +727,62 @@ function formatDate(value: string): string {
       <el-form :model="metadataForm" label-position="top">
         <div class="metadata-form-grid">
           <el-form-item
-            ><template #label>分类 <el-tooltip content="用于按制度、产品、操作手册等业务类别筛选和识别文档，不影响原文内容。"><el-icon><QuestionFilled /></el-icon></el-tooltip></template
+            ><template #label
+              >分类
+              <el-tooltip
+                content="用于按制度、产品、操作手册等业务类别筛选和识别文档，不影响原文内容。"
+                ><el-icon><QuestionFilled /></el-icon></el-tooltip></template
             ><el-input v-model="metadataForm.category" maxlength="100" placeholder="例如：内部制度"
           /></el-form-item>
           <el-form-item
-            ><template #label>业务领域 <el-tooltip content="填写文档归属的业务范围，例如人力资源、采购或售后，便于管理和后续质量分析。"><el-icon><QuestionFilled /></el-icon></el-tooltip></template
+            ><template #label
+              >业务领域
+              <el-tooltip
+                content="填写文档归属的业务范围，例如人力资源、采购或售后，便于管理和后续质量分析。"
+                ><el-icon><QuestionFilled /></el-icon></el-tooltip></template
             ><el-input
               v-model="metadataForm.businessDomain"
               maxlength="100"
               placeholder="例如：人力资源"
           /></el-form-item>
           <el-form-item
-            ><template #label>敏感等级 <el-tooltip content="控制文档的敏感标记。内部、机密、严格受限会影响管理员识别和授权策略，请按文档内容选择。"><el-icon><QuestionFilled /></el-icon></el-tooltip></template
+            ><template #label
+              >敏感等级
+              <el-tooltip
+                content="控制文档的敏感标记。内部、机密、严格受限会影响管理员识别和授权策略，请按文档内容选择。"
+                ><el-icon><QuestionFilled /></el-icon></el-tooltip></template
             ><el-select v-model="metadataForm.sensitivityLevel" class="form-full-width"
               ><el-option label="内部" value="INTERNAL" /><el-option
                 label="机密"
                 value="CONFIDENTIAL" /><el-option label="严格受限" value="RESTRICTED" /></el-select
           ></el-form-item>
           <el-form-item
-            ><template #label>访问模式 <el-tooltip content="继承知识库权限表示沿用知识库授权；单独配置权限表示该文档需要额外授权。"><el-icon><QuestionFilled /></el-icon></el-tooltip></template
+            ><template #label
+              >访问模式
+              <el-tooltip
+                content="继承知识库权限表示沿用知识库授权；单独配置权限表示该文档需要额外授权。"
+                ><el-icon><QuestionFilled /></el-icon></el-tooltip></template
             ><el-select v-model="metadataForm.accessMode" class="form-full-width"
               ><el-option label="继承知识库权限" value="INHERIT" /><el-option
                 label="单独配置权限"
                 value="RESTRICTED" /></el-select
           ></el-form-item>
           <el-form-item
-            ><template #label>版本标签 <el-tooltip content="给当前文档版本起一个容易识别的名称，例如 2026 年正式版；不会改变系统内部版本号。"><el-icon><QuestionFilled /></el-icon></el-tooltip></template
+            ><template #label
+              >版本标签
+              <el-tooltip
+                content="给当前文档版本起一个容易识别的名称，例如 2026 年正式版；不会改变系统内部版本号。"
+                ><el-icon><QuestionFilled /></el-icon></el-tooltip></template
             ><el-input
               v-model="metadataForm.versionLabel"
               maxlength="50"
               placeholder="例如：2026 年正式版"
           /></el-form-item>
           <el-form-item
-            ><template #label>标签 <el-tooltip content="可添加多个关键词，用于后续筛选和管理；每个文档最多 20 个标签。"><el-icon><QuestionFilled /></el-icon></el-tooltip></template
+            ><template #label
+              >标签
+              <el-tooltip content="可添加多个关键词，用于后续筛选和管理；每个文档最多 20 个标签。"
+                ><el-icon><QuestionFilled /></el-icon></el-tooltip></template
             ><el-select
               v-model="metadataForm.tags"
               multiple
@@ -769,7 +794,10 @@ function formatDate(value: string): string {
               placeholder="输入后按回车添加，最多 20 个"
           /></el-form-item>
           <el-form-item
-            ><template #label>生效时间 <el-tooltip content="填写后可标记文档从何时开始有效；留空表示立即有效。"><el-icon><QuestionFilled /></el-icon></el-tooltip></template
+            ><template #label
+              >生效时间
+              <el-tooltip content="填写后可标记文档从何时开始有效；留空表示立即有效。"
+                ><el-icon><QuestionFilled /></el-icon></el-tooltip></template
             ><el-date-picker
               v-model="metadataForm.effectiveAt"
               type="datetime"
@@ -778,7 +806,11 @@ function formatDate(value: string): string {
               clearable
           /></el-form-item>
           <el-form-item
-            ><template #label>失效时间 <el-tooltip content="填写后可标记文档何时失效；失效时间必须晚于生效时间，留空表示没有预设失效日期。"><el-icon><QuestionFilled /></el-icon></el-tooltip></template
+            ><template #label
+              >失效时间
+              <el-tooltip
+                content="填写后可标记文档何时失效；失效时间必须晚于生效时间，留空表示没有预设失效日期。"
+                ><el-icon><QuestionFilled /></el-icon></el-tooltip></template
             ><el-date-picker
               v-model="metadataForm.expiresAt"
               type="datetime"
@@ -876,13 +908,20 @@ function formatDate(value: string): string {
     <el-dialog v-model="versionUploadVisible" title="上传替换版本" width="min(540px, 92vw)">
       <el-form label-position="top"
         ><el-form-item
-          ><template #label>版本标签 <el-tooltip content="可选的人工识别名称，例如 2026.2；用于区分版本，不会直接决定哪个版本生效。"><el-icon><QuestionFilled /></el-icon></el-tooltip></template
+          ><template #label
+            >版本标签
+            <el-tooltip
+              content="可选的人工识别名称，例如 2026.2；用于区分版本，不会直接决定哪个版本生效。"
+              ><el-icon><QuestionFilled /></el-icon></el-tooltip></template
           ><el-input
             v-model="versionLabel"
             maxlength="50"
             placeholder="可选，例如：2026.2" /></el-form-item
         ><el-form-item
-          ><template #label>版本文件 <el-tooltip content="上传后会创建新的草稿版本并进入后台处理；处理成功后可作为当前版本。"><el-icon><QuestionFilled /></el-icon></el-tooltip></template
+          ><template #label
+            >版本文件
+            <el-tooltip content="上传后会创建新的草稿版本并进入后台处理；处理成功后可作为当前版本。"
+              ><el-icon><QuestionFilled /></el-icon></el-tooltip></template
           ><input
             ref="versionFileInput"
             class="visually-hidden"

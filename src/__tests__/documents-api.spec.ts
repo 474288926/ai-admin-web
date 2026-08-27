@@ -77,6 +77,24 @@ describe('documents api', () => {
     expect(result.items[0]?.originalName).toBe('制度.md')
   })
 
+  it('includes draft versions when loading ingestion tasks', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          items: [],
+          meta: { page: 1, pageSize: 20, total: 0, totalPages: 0, hasNextPage: false },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    await listDocuments(knowledgeBaseId, 1, 20, { includeDrafts: true })
+
+    const requestUrl = new URL(String(fetchMock.mock.calls[0]?.[0]), 'http://localhost')
+    expect(requestUrl.searchParams.get('includeDrafts')).toBe('true')
+  })
+
   it('uploads files as multipart batch with an idempotency key', async () => {
     const batch = {
       id: '624ba733-f33a-42f4-99bc-257980ce7c18',
