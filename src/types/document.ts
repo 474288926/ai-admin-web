@@ -69,6 +69,16 @@ export interface KnowledgeDocument {
 
 export type PaginatedDocuments = PaginatedResult<KnowledgeDocument>
 
+export interface DocumentLifecycleSummary {
+  published: number
+  ready: number
+  processing: number
+  failed: number
+  expired: number
+  expiringSoon: number
+  withoutExpiry: number
+}
+
 export interface DocumentBatchItem {
   id: string
   position: number

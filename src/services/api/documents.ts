@@ -2,6 +2,7 @@ import { z } from 'zod'
 
 import type {
   DocumentBatch,
+  DocumentLifecycleSummary,
   DocumentVersionList,
   PaginatedDocuments,
   UpdateDocumentMetadataInput,
@@ -78,6 +79,25 @@ const paginatedDocumentsSchema = z.object({
 
 export interface ListDocumentsOptions {
   includeDrafts?: boolean
+}
+
+const documentLifecycleSummarySchema = z.object({
+  published: z.number().int().nonnegative(),
+  ready: z.number().int().nonnegative(),
+  processing: z.number().int().nonnegative(),
+  failed: z.number().int().nonnegative(),
+  expired: z.number().int().nonnegative(),
+  expiringSoon: z.number().int().nonnegative(),
+  withoutExpiry: z.number().int().nonnegative(),
+})
+
+export async function getDocumentLifecycleSummary(
+  knowledgeBaseId: string,
+): Promise<DocumentLifecycleSummary> {
+  const result = await apiRequest<unknown>(
+    `/knowledge-bases/${knowledgeBaseId}/documents/lifecycle-summary`,
+  )
+  return documentLifecycleSummarySchema.parse(result)
 }
 
 export const documentBatchSchema = z.object({

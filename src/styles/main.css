@@ -6613,3 +6613,46 @@ input {
     grid-column: 1 / span 2;
   }
 }
+.document-lifecycle-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
+  gap: 12px;
+  align-items: stretch;
+  margin-bottom: 16px;
+}
+
+.lifecycle-metric,
+.lifecycle-summary-note {
+  min-height: 72px;
+  padding: 14px 16px;
+  border: 1px solid var(--border-color, #dcdfe6);
+  background: var(--surface-color, #fff);
+  border-radius: 6px;
+}
+
+.lifecycle-metric {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.lifecycle-metric span,
+.lifecycle-summary-note {
+  color: var(--text-secondary, #606266);
+  font-size: 13px;
+}
+
+.lifecycle-metric strong {
+  color: var(--text-primary, #303133);
+  font-size: 24px;
+  line-height: 1;
+}
+
+.lifecycle-metric.is-warning { border-color: #e6a23c; }
+.lifecycle-metric.is-danger { border-color: #f56c6c; }
+.lifecycle-summary-note { display: flex; align-items: center; white-space: nowrap; }
+
+@media (max-width: 900px) {
+  .document-lifecycle-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .lifecycle-summary-note { grid-column: 1 / -1; min-height: auto; }
+}

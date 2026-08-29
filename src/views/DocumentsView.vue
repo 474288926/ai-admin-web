@@ -31,6 +31,14 @@ const MAX_FILES = 20
 const MAX_FILE_SIZE = 20 * 1024 * 1024
 const MAX_TOTAL_SIZE = 100 * 1024 * 1024
 const ACCEPTED_EXTENSIONS = ['.txt', '.md', '.pdf', '.docx', '.xlsx']
+const ACCEPTED_FILE_TYPES = [
+  ...ACCEPTED_EXTENSIONS,
+  'text/plain',
+  'text/markdown',
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+].join(',')
 
 const route = useRoute()
 const router = useRouter()
@@ -90,6 +98,12 @@ watch(selectedKnowledgeBaseId, async (id) => {
 const documentsQuery = useQuery({
   queryKey: computed(() => ['documents', selectedKnowledgeBaseId.value, page.value, PAGE_SIZE]),
   queryFn: () => documentsApi.listDocuments(selectedKnowledgeBaseId.value, page.value, PAGE_SIZE),
+  enabled: computed(() => Boolean(selectedKnowledgeBaseId.value)),
+})
+
+const lifecycleSummaryQuery = useQuery({
+  queryKey: computed(() => ['document-lifecycle-summary', selectedKnowledgeBaseId.value]),
+  queryFn: () => documentsApi.getDocumentLifecycleSummary(selectedKnowledgeBaseId.value),
   enabled: computed(() => Boolean(selectedKnowledgeBaseId.value)),
 })
 
@@ -502,6 +516,24 @@ function formatDate(value: string): string {
     </el-empty>
 
     <template v-if="selectedKnowledgeBaseId">
+      <section v-if="lifecycleSummaryQuery.data.value" class="document-lifecycle-summary">
+        <div class="lifecycle-metric">
+          <span>可检索</span><strong>{{ lifecycleSummaryQuery.data.value.ready }}</strong>
+        </div>
+        <div class="lifecycle-metric" :class="{ 'is-warning': lifecycleSummaryQuery.data.value.expiringSoon }">
+          <span>7 天内到期</span><strong>{{ lifecycleSummaryQuery.data.value.expiringSoon }}</strong>
+        </div>
+        <div class="lifecycle-metric" :class="{ 'is-danger': lifecycleSummaryQuery.data.value.expired }">
+          <span>已过期</span><strong>{{ lifecycleSummaryQuery.data.value.expired }}</strong>
+        </div>
+        <div class="lifecycle-metric" :class="{ 'is-danger': lifecycleSummaryQuery.data.value.failed }">
+          <span>处理失败</span><strong>{{ lifecycleSummaryQuery.data.value.failed }}</strong>
+        </div>
+        <div class="lifecycle-summary-note">
+          已发布 {{ lifecycleSummaryQuery.data.value.published }} 份 · 无预设期限
+          {{ lifecycleSummaryQuery.data.value.withoutExpiry }} 份
+        </div>
+      </section>
       <section class="documents-toolbar">
         <div class="documents-search">
           <el-input
@@ -667,7 +699,7 @@ function formatDate(value: string): string {
         class="visually-hidden"
         type="file"
         multiple
-        accept=".txt,.md,.pdf,.docx,.xlsx"
+        :accept="ACCEPTED_FILE_TYPES"
         @change="handleFileInput"
       />
       <button
@@ -926,7 +958,7 @@ function formatDate(value: string): string {
             ref="versionFileInput"
             class="visually-hidden"
             type="file"
-            accept=".txt,.md,.pdf,.docx,.xlsx"
+            :accept="ACCEPTED_FILE_TYPES"
             @change="handleVersionFile"
           /><button type="button" class="version-file-picker" @click="versionFileInput?.click()">
             <el-icon><UploadFilled /></el-icon><span>{{ versionFile?.name || '选择替换文件' }}</span
