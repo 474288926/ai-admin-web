@@ -91,6 +91,23 @@ const documentLifecycleSummarySchema = z.object({
   withoutExpiry: z.number().int().nonnegative(),
 })
 
+const documentReleasePreflightSchema = z.object({
+  eligible: z.boolean(),
+  blockerCodes: z.array(z.string()),
+  documentId: z.uuid(),
+  version: z.number().int().positive(),
+  suites: z.array(
+    z.object({
+      suiteId: z.uuid(),
+      suiteVersion: z.number().int().positive(),
+      suiteName: z.string(),
+      coversDocument: z.boolean(),
+      latestRunId: z.uuid().nullable(),
+      latestRunGatePassed: z.boolean().nullable(),
+    }),
+  ),
+})
+
 export async function getDocumentLifecycleSummary(
   knowledgeBaseId: string,
 ): Promise<DocumentLifecycleSummary> {
@@ -244,6 +261,19 @@ export async function listDocumentVersions(
       items: z.array(documentSchema),
     })
     .parse(result)
+}
+
+export type DocumentReleasePreflight = z.infer<typeof documentReleasePreflightSchema>
+
+export async function getDocumentReleasePreflight(
+  knowledgeBaseId: string,
+  documentId: string,
+  versionId: string,
+): Promise<DocumentReleasePreflight> {
+  const result = await apiRequest<unknown>(
+    `/knowledge-bases/${knowledgeBaseId}/documents/${documentId}/versions/${versionId}/release-preflight`,
+  )
+  return documentReleasePreflightSchema.parse(result)
 }
 
 export async function uploadDocumentVersion(

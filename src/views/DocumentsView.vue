@@ -371,10 +371,34 @@ async function uploadVersion(): Promise<void> {
 async function activateVersion(version: KnowledgeDocument): Promise<void> {
   if (!activeDocument.value) return
   try {
+    const preflight = await documentsApi.getDocumentReleasePreflight(
+      selectedKnowledgeBaseId.value,
+      activeDocument.value.id,
+      version.id,
+    )
+    const blockerLabels: Record<string, string> = {
+      DOCUMENT_NOT_READY: '文档尚未完成解析',
+      EMBEDDING_NOT_READY: '向量化尚未完成',
+      DOCUMENT_NOT_EFFECTIVE: '文档尚未到生效时间',
+      DOCUMENT_EXPIRED: '文档已经过期',
+      NO_EVALUATION_COVERAGE: '没有评测套件覆盖此版本',
+      NO_COMPLETED_EVALUATION: '没有已完成的覆盖性评测',
+      EVALUATION_GATE_NOT_PASSED: '最近一次评测门禁未通过',
+      EVALUATION_RUN_IS_RETRY: '最近一次评测是局部重试',
+      EVALUATION_DATASET_MISMATCH: '评测数据与套件不一致',
+    }
+    const blockers = preflight.blockerCodes.map((code) => blockerLabels[code] || code)
+    const message = blockers.length
+      ? `预检发现：${blockers.join('；')}。仍要切换到 ${version.versionLabel || `V${version.version}`}？`
+      : `确认切换到 ${version.versionLabel || `V${version.version}`}？当前版本将自动归档。`
     await ElMessageBox.confirm(
-      `确认切换到 ${version.versionLabel || `V${version.version}`}？当前版本将自动归档。`,
+      message,
       '切换文档版本',
-      { confirmButtonText: '确认切换', cancelButtonText: '取消', type: 'warning' },
+      {
+        confirmButtonText: blockers.length ? '仍然切换' : '确认切换',
+        cancelButtonText: '取消',
+        type: blockers.length ? 'warning' : 'info',
+      },
     )
     await activateVersionMutation.mutateAsync({
       documentId: activeDocument.value.id,
