@@ -152,6 +152,7 @@ describe('documents api', () => {
             pending: 2,
             actionable: 1,
             overdue: 1,
+            escalationRequired: 1,
             truncated: false,
             items: [
               {
@@ -165,6 +166,10 @@ describe('documents api', () => {
                 proposedAudienceTag: 'audience:internal-only',
                 businessOwner: '运维负责人',
                 createdByDisplayName: 'creator@example.com',
+                assignedToUserId: '550e8400-e29b-41d4-a716-446655440000',
+                assignedToDisplayName: '审批人',
+                dueAt: '2026-09-02T01:00:00.000Z',
+                canDecide: true,
                 createdAt: '2026-09-01T01:00:00.000Z',
                 ageHours: 25,
                 overdue: true,
@@ -180,7 +185,11 @@ describe('documents api', () => {
     const summary = await getDocumentAudienceApprovalSummary(knowledgeBaseId)
 
     expect(document.originalName).toBe('运维手册.md')
-    expect(summary.items[0]).toMatchObject({ overdue: true, ageHours: 25 })
+    expect(summary.items[0]).toMatchObject({
+      overdue: true,
+      ageHours: 25,
+      assignedToDisplayName: '审批人',
+    })
   })
 
   it('uploads files as multipart batch with an idempotency key', async () => {

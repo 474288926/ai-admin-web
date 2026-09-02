@@ -3208,6 +3208,31 @@ input {
   border-radius: 6px;
   background: #fafbfd;
 }
+.approval-assignment-create {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(190px, 0.8fr);
+  gap: 10px;
+  width: 100%;
+  margin-bottom: 10px;
+}
+.approval-assignment-create > * {
+  width: 100% !important;
+}
+.approval-inline-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.approval-inline-item small {
+  display: block;
+  margin-top: 4px;
+  color: var(--el-text-color-secondary);
+}
+.approval-assignment-form {
+  margin-top: 16px;
+}
 .approval-inline-item > div:first-child {
   display: flex;
   min-width: 0;
@@ -3231,6 +3256,9 @@ input {
 }
 
 @media (max-width: 640px) {
+  .approval-assignment-create {
+    grid-template-columns: 1fr;
+  }
   .document-approval-summary {
     grid-template-columns: auto auto;
   }

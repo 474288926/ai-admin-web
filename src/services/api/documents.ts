@@ -345,6 +345,32 @@ const documentAudienceApprovalSchema = z.object({
   decidedByUser: z
     .object({ id: z.uuid(), email: z.string(), name: z.string().nullable() })
     .nullable(),
+  assignedToUserId: z.uuid().nullable(),
+  assignedByUserId: z.uuid().nullable(),
+  assignedToUser: z
+    .object({ id: z.uuid(), email: z.string(), name: z.string().nullable() })
+    .nullable(),
+  assignedByUser: z
+    .object({ id: z.uuid(), email: z.string(), name: z.string().nullable() })
+    .nullable(),
+  assignedAt: z.iso.datetime().nullable(),
+  dueAt: z.iso.datetime(),
+  assignments: z.array(
+    z.object({
+      id: z.uuid(),
+      fromUserId: z.uuid().nullable(),
+      toUserId: z.uuid(),
+      assignedByUserId: z.uuid(),
+      reason: z.string().nullable(),
+      dueAt: z.iso.datetime(),
+      createdAt: z.iso.datetime(),
+      fromUser: z
+        .object({ id: z.uuid(), email: z.string(), name: z.string().nullable() })
+        .nullable(),
+      toUser: z.object({ id: z.uuid(), email: z.string(), name: z.string().nullable() }),
+      assignedByUser: z.object({ id: z.uuid(), email: z.string(), name: z.string().nullable() }),
+    }),
+  ),
   decidedAt: z.iso.datetime().nullable(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
@@ -354,6 +380,7 @@ const documentAudienceApprovalSummarySchema = z.object({
   pending: z.number().int().nonnegative(),
   actionable: z.number().int().nonnegative(),
   overdue: z.number().int().nonnegative(),
+  escalationRequired: z.number().int().nonnegative(),
   truncated: z.boolean(),
   items: z.array(
     z.object({
@@ -367,6 +394,10 @@ const documentAudienceApprovalSummarySchema = z.object({
       proposedAudienceTag: z.enum(['audience:customer-citable', 'audience:internal-only']),
       businessOwner: z.string(),
       createdByDisplayName: z.string(),
+      assignedToUserId: z.uuid().nullable(),
+      assignedToDisplayName: z.string().nullable(),
+      dueAt: z.iso.datetime(),
+      canDecide: z.boolean(),
       createdAt: z.iso.datetime(),
       ageHours: z.number().int().nonnegative(),
       overdue: z.boolean(),
@@ -454,6 +485,22 @@ export async function listDocumentAudienceApprovals(
   return z.array(documentAudienceApprovalSchema).parse(result)
 }
 
+const documentApprovalUserSchema = z.object({
+  id: z.uuid(),
+  email: z.string(),
+  name: z.string().nullable(),
+})
+
+export async function listDocumentAudienceApprovalAssignees(
+  knowledgeBaseId: string,
+  documentId: string,
+): Promise<Array<{ id: string; email: string; name: string | null }>> {
+  const result = await apiRequest<unknown>(
+    `/knowledge-bases/${knowledgeBaseId}/documents/${documentId}/audience-approval-assignees`,
+  )
+  return z.array(documentApprovalUserSchema).parse(result)
+}
+
 export async function getDocumentAudienceApprovalSummary(
   knowledgeBaseId: string,
 ): Promise<DocumentAudienceApprovalSummary> {
@@ -470,10 +517,25 @@ export async function createDocumentAudienceApproval(
     businessEvidenceId: string
     proposedAudienceTag: DocumentAudienceEvidence['proposedAudienceTag']
     businessOwner: string
+    assignedToUserId?: string
+    dueAt?: string
   },
 ): Promise<DocumentAudienceApproval> {
   const result = await apiRequest<unknown>(
     `/knowledge-bases/${knowledgeBaseId}/documents/${documentId}/audience-approvals`,
+    { method: 'POST', body: JSON.stringify(input) },
+  )
+  return documentAudienceApprovalSchema.parse(result)
+}
+
+export async function assignDocumentAudienceApproval(
+  knowledgeBaseId: string,
+  documentId: string,
+  approvalId: string,
+  input: { assignedToUserId: string; dueAt: string; reason: string },
+): Promise<DocumentAudienceApproval> {
+  const result = await apiRequest<unknown>(
+    `/knowledge-bases/${knowledgeBaseId}/documents/${documentId}/audience-approvals/${approvalId}/assignment`,
     { method: 'POST', body: JSON.stringify(input) },
   )
   return documentAudienceApprovalSchema.parse(result)

@@ -42,6 +42,7 @@ const actionOptions = [
   { value: 'document.version_created', label: '创建文档版本' },
   { value: 'document.business_evidence_created', label: '创建文档业务证据' },
   { value: 'document.audience_approval_created', label: '发起文档受众审批' },
+  { value: 'document.audience_approval_assigned', label: '委托或改派文档受众审批' },
   { value: 'document.audience_approval_decided', label: '决定文档受众审批' },
   { value: 'document.audience_evidence_updated', label: '保存文档受众结论' },
   { value: 'knowledge_backlog.created', label: '创建知识缺口待办' },
@@ -279,6 +280,9 @@ function recordSummary(value: unknown): string {
   }
   if (record.action === 'document.audience_approval_created') {
     return `文档审批编号：${String(changeValue(record, 'reference') ?? '-')}`
+  }
+  if (record.action === 'document.audience_approval_assigned') {
+    return `委托或改派文档审批：${String(changeValue(record, 'reference') ?? '-')}`
   }
   if (record.action === 'document.audience_approval_decided') {
     const decision = changeValue(record, 'decision') === 'APPROVED' ? '批准' : '驳回'

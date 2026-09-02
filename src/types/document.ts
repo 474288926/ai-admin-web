@@ -138,15 +138,42 @@ export interface DocumentAudienceApproval {
   decisionComment: string | null
   createdByUser: { id: string; email: string; name: string | null }
   decidedByUser: { id: string; email: string; name: string | null } | null
+  assignedToUserId: string | null
+  assignedByUserId: string | null
+  assignedToUser: DocumentApprovalUser | null
+  assignedByUser: DocumentApprovalUser | null
+  assignedAt: string | null
+  dueAt: string
+  assignments: DocumentAudienceApprovalAssignment[]
   decidedAt: string | null
   createdAt: string
   updatedAt: string
+}
+
+export interface DocumentApprovalUser {
+  id: string
+  email: string
+  name: string | null
+}
+
+export interface DocumentAudienceApprovalAssignment {
+  id: string
+  fromUserId: string | null
+  toUserId: string
+  assignedByUserId: string
+  reason: string | null
+  dueAt: string
+  createdAt: string
+  fromUser: DocumentApprovalUser | null
+  toUser: DocumentApprovalUser
+  assignedByUser: DocumentApprovalUser
 }
 
 export interface DocumentAudienceApprovalSummary {
   pending: number
   actionable: number
   overdue: number
+  escalationRequired: number
   truncated: boolean
   items: DocumentAudienceApprovalTodoItem[]
 }
@@ -162,6 +189,10 @@ export interface DocumentAudienceApprovalTodoItem {
   proposedAudienceTag: DocumentAudienceEvidence['proposedAudienceTag']
   businessOwner: string
   createdByDisplayName: string
+  assignedToUserId: string | null
+  assignedToDisplayName: string | null
+  dueAt: string
+  canDecide: boolean
   createdAt: string
   ageHours: number
   overdue: boolean

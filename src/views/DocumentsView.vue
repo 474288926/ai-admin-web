@@ -103,11 +103,18 @@ const audienceEvidenceForm = ref<UpsertDocumentAudienceEvidenceInput>({
 })
 const businessEvidenceItems = ref<DocumentBusinessEvidence[]>([])
 const audienceApprovalItems = ref<DocumentAudienceApproval[]>([])
+const audienceApprovalAssignees = ref<Array<{ id: string; email: string; name: string | null }>>([])
+const audienceApprovalAssigneeId = ref('')
+const audienceApprovalDueAt = ref(defaultApprovalDueAt())
+const approvalAssignmentDialogVisible = ref(false)
+const approvalAssignmentTarget = ref<DocumentAudienceApproval | null>(null)
+const approvalAssignmentForm = ref({ assignedToUserId: '', dueAt: '', reason: '' })
 const businessEvidenceForm = ref({ title: '', detailsHtml: '' })
 const businessEvidenceAttachments = ref<File[]>([])
 const creatingBusinessEvidence = ref(false)
 const creatingAudienceApproval = ref(false)
 const decidingApprovalId = ref('')
+const assigningApprovalId = ref('')
 const currentUserId = readSession()?.user.id ?? ''
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
@@ -386,12 +393,16 @@ function openMetadata(item: KnowledgeDocument): void {
 
 async function openAudienceEvidence(item: KnowledgeDocument): Promise<void> {
   activeDocument.value = item
-  const [businessEvidence, approvals] = await Promise.all([
+  const [businessEvidence, approvals, assignees] = await Promise.all([
     documentsApi.listDocumentBusinessEvidence(selectedKnowledgeBaseId.value, item.id),
     documentsApi.listDocumentAudienceApprovals(selectedKnowledgeBaseId.value, item.id),
+    documentsApi.listDocumentAudienceApprovalAssignees(selectedKnowledgeBaseId.value, item.id),
   ])
   businessEvidenceItems.value = businessEvidence
   audienceApprovalItems.value = approvals
+  audienceApprovalAssignees.value = assignees
+  audienceApprovalAssigneeId.value = ''
+  audienceApprovalDueAt.value = defaultApprovalDueAt()
   const evidence: DocumentAudienceEvidence | null = item.audienceEvidence
   audienceEvidenceForm.value = evidence
     ? {
@@ -588,6 +599,15 @@ async function createAudienceApproval(): Promise<void> {
     ElMessage.warning('请先填写业务内容负责人')
     return
   }
+  const dueAt = new Date(audienceApprovalDueAt.value)
+  if (
+    !audienceApprovalDueAt.value ||
+    !Number.isFinite(dueAt.getTime()) ||
+    dueAt.getTime() <= Date.now()
+  ) {
+    ElMessage.warning('请选择晚于当前时间的审批处理期限')
+    return
+  }
   creatingAudienceApproval.value = true
   try {
     const approval = await documentsApi.createDocumentAudienceApproval(
@@ -597,16 +617,73 @@ async function createAudienceApproval(): Promise<void> {
         businessEvidenceId: evidenceId,
         proposedAudienceTag: audienceEvidenceForm.value.proposedAudienceTag,
         businessOwner,
+        assignedToUserId: audienceApprovalAssigneeId.value || undefined,
+        dueAt: dueAt.toISOString(),
       },
     )
     audienceApprovalItems.value = [approval, ...audienceApprovalItems.value]
     audienceEvidenceForm.value.approvalId = ''
     await audienceApprovalSummaryQuery.refetch()
-    ElMessage.success(`审批单 ${approval.reference} 已创建，请由另一名成员审批`)
+    ElMessage.success(
+      approval.assignedToUser
+        ? `审批单 ${approval.reference} 已委托给 ${approvalUserName(approval.assignedToUser)}`
+        : `审批单 ${approval.reference} 已创建，请由另一名成员审批`,
+    )
   } catch (error) {
     ElMessage.error(getErrorMessage(error))
   } finally {
     creatingAudienceApproval.value = false
+  }
+}
+
+function canDecideAudienceApproval(item: DocumentAudienceApproval): boolean {
+  return (
+    item.createdByUser.id !== currentUserId &&
+    (item.assignedToUserId === null || item.assignedToUserId === currentUserId)
+  )
+}
+
+function openApprovalAssignment(item: DocumentAudienceApproval): void {
+  approvalAssignmentTarget.value = item
+  approvalAssignmentForm.value = {
+    assignedToUserId: item.assignedToUserId ?? '',
+    dueAt: toLocalDateTime(item.dueAt),
+    reason: item.assignedToUserId ? '' : '明确审批责任人',
+  }
+  approvalAssignmentDialogVisible.value = true
+}
+
+async function assignAudienceApproval(): Promise<void> {
+  const document = activeDocument.value
+  const approval = approvalAssignmentTarget.value
+  const form = approvalAssignmentForm.value
+  if (!document || !approval) return
+  if (!form.assignedToUserId || !form.dueAt || !form.reason.trim()) {
+    ElMessage.warning('请选择审批人、处理期限并填写委托或改派原因')
+    return
+  }
+  assigningApprovalId.value = approval.id
+  try {
+    const updated = await documentsApi.assignDocumentAudienceApproval(
+      selectedKnowledgeBaseId.value,
+      document.id,
+      approval.id,
+      {
+        assignedToUserId: form.assignedToUserId,
+        dueAt: new Date(form.dueAt).toISOString(),
+        reason: form.reason.trim(),
+      },
+    )
+    audienceApprovalItems.value = audienceApprovalItems.value.map((item) =>
+      item.id === updated.id ? updated : item,
+    )
+    approvalAssignmentDialogVisible.value = false
+    await audienceApprovalSummaryQuery.refetch()
+    ElMessage.success(`审批单已改派给 ${approvalUserName(updated.assignedToUser)}`)
+  } catch (error) {
+    ElMessage.error(getErrorMessage(error))
+  } finally {
+    assigningApprovalId.value = ''
   }
 }
 
@@ -880,6 +957,14 @@ function formatDate(value: string): string {
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date(value))
+}
+
+function defaultApprovalDueAt(): string {
+  return toLocalDateTime(new Date(Date.now() + 24 * 3_600_000).toISOString())
+}
+
+function approvalUserName(user: { email: string; name: string | null } | null): string {
+  return user ? user.name || user.email : '未指定审批人'
 }
 </script>
 
@@ -1414,6 +1499,29 @@ function formatDate(value: string): string {
           </div>
         </el-form-item>
         <el-form-item label="文档级审批单" required>
+          <div class="approval-assignment-create">
+            <el-select
+              v-model="audienceApprovalAssigneeId"
+              clearable
+              filterable
+              placeholder="审批人（可暂不指定）"
+            >
+              <el-option
+                v-for="user in audienceApprovalAssignees.filter(
+                  (user) => user.id !== currentUserId,
+                )"
+                :key="user.id"
+                :label="approvalUserName(user)"
+                :value="user.id"
+              />
+            </el-select>
+            <el-date-picker
+              v-model="audienceApprovalDueAt"
+              type="datetime"
+              value-format="YYYY-MM-DDTHH:mm"
+              placeholder="处理期限"
+            />
+          </div>
           <div class="audience-record-row">
             <el-select
               v-model="audienceEvidenceForm.approvalId"
@@ -1439,7 +1547,7 @@ function formatDate(value: string): string {
             >
           </div>
           <small class="form-help"
-            >审批单会冻结当前文档版本、业务证据、受众范围和负责人；发起人不能审批自己的审批单。</small
+            >指定审批人后只有该成员能签署；未指定时其他有管理权限的成员可处理。处理期限用于超时提醒和人工升级，不会自动批准。</small
           >
           <div
             v-for="item in audienceApprovalItems.filter(
@@ -1458,24 +1566,37 @@ function formatDate(value: string): string {
                 }}
                 · {{ item.businessOwner }}</span
               >
+              <small>
+                审批人：{{ approvalUserName(item.assignedToUser) }} · 截止：{{
+                  formatDate(item.dueAt)
+                }}
+              </small>
             </div>
-            <div v-if="item.createdByUser.id !== currentUserId">
-              <el-button
-                size="small"
-                type="success"
-                :loading="decidingApprovalId === item.id"
-                @click="decideAudienceApproval(item, 'APPROVED')"
-                >批准</el-button
-              ><el-button
-                size="small"
-                type="danger"
-                plain
-                :disabled="Boolean(decidingApprovalId)"
-                @click="decideAudienceApproval(item, 'REJECTED')"
-                >驳回</el-button
+            <div class="approval-inline-actions">
+              <el-button size="small" plain @click="openApprovalAssignment(item)">
+                {{ item.assignedToUserId ? '改派' : '委托' }}
+              </el-button>
+              <template v-if="canDecideAudienceApproval(item)">
+                <el-button
+                  size="small"
+                  type="success"
+                  :loading="decidingApprovalId === item.id"
+                  @click="decideAudienceApproval(item, 'APPROVED')"
+                  >批准</el-button
+                ><el-button
+                  size="small"
+                  type="danger"
+                  plain
+                  :disabled="Boolean(decidingApprovalId)"
+                  @click="decideAudienceApproval(item, 'REJECTED')"
+                  >驳回</el-button
+                >
+              </template>
+              <el-tag v-else-if="item.assignedToUserId" type="info" effect="plain"
+                >等待受托人处理</el-tag
               >
+              <el-tag v-else type="info" effect="plain">等待其他成员审批</el-tag>
             </div>
-            <el-tag v-else type="info" effect="plain">等待其他成员审批</el-tag>
           </div>
         </el-form-item>
         <el-form-item label="补充说明">
@@ -1641,7 +1762,7 @@ function formatDate(value: string): string {
     >
       <el-alert
         title="待办来自实时审批状态"
-        description="只显示当前账号有文档管理权限、且不是本人发起的待审批记录。等待满 24 小时会标记为超时，但不会自动批准或驳回。"
+        description="显示当前账号可处理的审批，以及管理范围内已超过明确期限、需要人工升级或改派的记录。超时不会自动批准或驳回。"
         type="info"
         show-icon
         :closable="false"
@@ -1650,6 +1771,12 @@ function formatDate(value: string): string {
         <span>可处理 {{ audienceApprovalSummaryQuery.data.value?.actionable ?? 0 }} 条</span>
         <el-tag v-if="audienceApprovalSummaryQuery.data.value?.overdue" type="danger" effect="plain"
           >超时 {{ audienceApprovalSummaryQuery.data.value.overdue }} 条</el-tag
+        >
+        <el-tag
+          v-if="audienceApprovalSummaryQuery.data.value?.escalationRequired"
+          type="warning"
+          effect="plain"
+          >需升级 {{ audienceApprovalSummaryQuery.data.value.escalationRequired }} 条</el-tag
         >
         <el-button link :icon="Refresh" @click="audienceApprovalSummaryQuery.refetch()"
           >刷新</el-button
@@ -1672,7 +1799,7 @@ function formatDate(value: string): string {
               <span>{{ todo.reference }} · V{{ todo.documentVersion }}</span>
             </div>
             <el-tag :type="todo.overdue ? 'danger' : 'warning'" effect="plain">
-              {{ todo.overdue ? `已等待 ${todo.ageHours} 小时` : `等待 ${todo.ageHours} 小时` }}
+              {{ todo.overdue ? '已超处理期限' : `等待 ${todo.ageHours} 小时` }}
             </el-tag>
           </div>
           <dl>
@@ -1698,14 +1825,31 @@ function formatDate(value: string): string {
               <dt>发起人</dt>
               <dd>{{ todo.createdByDisplayName }}</dd>
             </div>
+            <div>
+              <dt>当前审批人</dt>
+              <dd>{{ todo.assignedToDisplayName ?? '未指定' }}</dd>
+            </div>
+            <div>
+              <dt>处理期限</dt>
+              <dd>{{ formatDate(todo.dueAt) }}</dd>
+            </div>
           </dl>
           <div class="document-approval-todo-actions">
             <small>发起于 {{ formatDate(todo.createdAt) }}</small>
             <el-button
+              v-if="todo.canDecide"
               type="primary"
               size="small"
               @click="openAudienceApprovalTodo(todo.documentId)"
               >立即处理</el-button
+            >
+            <el-button
+              v-else
+              type="warning"
+              plain
+              size="small"
+              @click="openAudienceApprovalTodo(todo.documentId)"
+              >查看并改派</el-button
             >
           </div>
         </article>
@@ -1718,6 +1862,68 @@ function formatDate(value: string): string {
         :closable="false"
       />
     </el-drawer>
+
+    <el-dialog
+      v-model="approvalAssignmentDialogVisible"
+      :title="approvalAssignmentTarget?.assignedToUserId ? '改派文档审批' : '委托文档审批'"
+      width="min(520px, 94vw)"
+    >
+      <el-alert
+        title="改派不会改变审批内容"
+        description="系统会保留原审批人、实际处理人、改派操作者、原因和期限。发起人始终不能审批自己的记录。"
+        type="info"
+        show-icon
+        :closable="false"
+      />
+      <el-form label-position="top" class="approval-assignment-form">
+        <el-form-item label="审批人" required>
+          <el-select
+            v-model="approvalAssignmentForm.assignedToUserId"
+            filterable
+            class="form-full-width"
+            placeholder="选择有该文档管理权限的企业成员"
+          >
+            <el-option
+              v-for="user in audienceApprovalAssignees.filter(
+                (user) => user.id !== approvalAssignmentTarget?.createdByUser.id,
+              )"
+              :key="user.id"
+              :label="approvalUserName(user)"
+              :value="user.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="处理期限" required>
+          <el-date-picker
+            v-model="approvalAssignmentForm.dueAt"
+            type="datetime"
+            value-format="YYYY-MM-DDTHH:mm"
+            class="form-full-width"
+            placeholder="选择晚于当前时间的期限"
+          />
+        </el-form-item>
+        <el-form-item label="委托或改派原因" required>
+          <el-input
+            v-model="approvalAssignmentForm.reason"
+            type="textarea"
+            :rows="3"
+            maxlength="500"
+            show-word-limit
+            placeholder="例如：原审批人休假，超时升级给知识库管理员处理"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="approvalAssignmentDialogVisible = false">取消</el-button>
+        <el-button
+          type="primary"
+          :loading="Boolean(assigningApprovalId)"
+          @click="assignAudienceApproval"
+        >
+          保存委托
+        </el-button>
+      </template>
+    </el-dialog>
 
     <el-drawer v-model="versionsDrawerVisible" title="文档版本" size="min(720px, 96vw)">
       <div class="version-drawer-head">
