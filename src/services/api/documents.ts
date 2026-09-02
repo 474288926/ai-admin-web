@@ -122,11 +122,29 @@ const documentLifecycleSummarySchema = z.object({
 
 const documentAudienceApprovalQueueStageSchema = z.enum([
   'NOT_STARTED',
+  'PREPARATION',
   'PENDING',
   'READY_TO_FINALIZE',
   'COMPLETED',
   'REJECTED',
 ])
+
+const documentAudiencePreparationSchema = z.object({
+  id: z.uuid(),
+  documentId: z.uuid(),
+  documentChecksumSha256: z.string().length(64),
+  documentVersion: z.number().int().positive(),
+  assignedToUserId: z.uuid(),
+  assignedByUserId: z.uuid(),
+  assignedToUser: z.object({ id: z.uuid(), email: z.string(), name: z.string().nullable() }),
+  assignedByUser: z.object({ id: z.uuid(), email: z.string(), name: z.string().nullable() }),
+  dueAt: z.iso.datetime(),
+  reason: z.string(),
+  completedAt: z.iso.datetime().nullable(),
+  completedByUserId: z.uuid().nullable(),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+})
 
 const documentAudienceApprovalQueueSchema = z.object({
   items: z.array(
@@ -135,12 +153,14 @@ const documentAudienceApprovalQueueSchema = z.object({
       stage: documentAudienceApprovalQueueStageSchema,
       latestApprovalReference: z.string().nullable(),
       latestApprovalDueAt: nullableDateTime,
+      preparation: documentAudiencePreparationSchema.nullable(),
       document: documentSchema,
     }),
   ),
   counts: z.object({
     total: z.number().int().nonnegative(),
     notStarted: z.number().int().nonnegative(),
+    preparation: z.number().int().nonnegative(),
     pending: z.number().int().nonnegative(),
     readyToFinalize: z.number().int().nonnegative(),
     completed: z.number().int().nonnegative(),
@@ -408,6 +428,24 @@ const documentAudienceApprovalSchema = z.object({
 })
 
 const documentAudienceApprovalSummarySchema = z.object({
+  preparationPending: z.number().int().nonnegative(),
+  preparationActionable: z.number().int().nonnegative(),
+  preparationOverdue: z.number().int().nonnegative(),
+  preparationItems: z.array(
+    z.object({
+      preparationId: z.uuid(),
+      documentId: z.uuid(),
+      documentName: z.string(),
+      documentVersion: z.number().int().positive(),
+      assignedToUserId: z.uuid(),
+      assignedToDisplayName: z.string(),
+      assignedByDisplayName: z.string(),
+      dueAt: z.iso.datetime(),
+      reason: z.string(),
+      createdAt: z.iso.datetime(),
+      overdue: z.boolean(),
+    }),
+  ),
   pending: z.number().int().nonnegative(),
   actionable: z.number().int().nonnegative(),
   overdue: z.number().int().nonnegative(),
@@ -572,6 +610,18 @@ export async function createDocumentAudienceApproval(
     { method: 'POST', body: JSON.stringify(input) },
   )
   return documentAudienceApprovalSchema.parse(result)
+}
+
+export async function assignDocumentAudiencePreparation(
+  knowledgeBaseId: string,
+  documentId: string,
+  input: { assignedToUserId: string; dueAt: string; reason: string },
+) {
+  const result = await apiRequest<unknown>(
+    `/knowledge-approvals/document-audience/knowledge-bases/${knowledgeBaseId}/documents/${documentId}/preparation/assignment`,
+    { method: 'POST', body: JSON.stringify(input) },
+  )
+  return documentAudiencePreparationSchema.parse(result)
 }
 
 export async function assignDocumentAudienceApproval(

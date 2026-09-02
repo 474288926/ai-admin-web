@@ -169,7 +169,28 @@ export interface DocumentAudienceApprovalAssignment {
   assignedByUser: DocumentApprovalUser
 }
 
+export interface DocumentAudiencePreparation {
+  id: string
+  documentId: string
+  documentChecksumSha256: string
+  documentVersion: number
+  assignedToUserId: string
+  assignedByUserId: string
+  assignedToUser: DocumentApprovalUser
+  assignedByUser: DocumentApprovalUser
+  dueAt: string
+  reason: string
+  completedAt: string | null
+  completedByUserId: string | null
+  createdAt: string
+  updatedAt: string
+}
+
 export interface DocumentAudienceApprovalSummary {
+  preparationPending: number
+  preparationActionable: number
+  preparationOverdue: number
+  preparationItems: DocumentAudiencePreparationTodoItem[]
   pending: number
   actionable: number
   overdue: number
@@ -178,8 +199,23 @@ export interface DocumentAudienceApprovalSummary {
   items: DocumentAudienceApprovalTodoItem[]
 }
 
+export interface DocumentAudiencePreparationTodoItem {
+  preparationId: string
+  documentId: string
+  documentName: string
+  documentVersion: number
+  assignedToUserId: string
+  assignedToDisplayName: string
+  assignedByDisplayName: string
+  dueAt: string
+  reason: string
+  createdAt: string
+  overdue: boolean
+}
+
 export type DocumentAudienceApprovalQueueStage =
   | 'NOT_STARTED'
+  | 'PREPARATION'
   | 'PENDING'
   | 'READY_TO_FINALIZE'
   | 'COMPLETED'
@@ -190,12 +226,14 @@ export interface DocumentAudienceApprovalQueueItem {
   stage: DocumentAudienceApprovalQueueStage
   latestApprovalReference: string | null
   latestApprovalDueAt: string | null
+  preparation: DocumentAudiencePreparation | null
   document: KnowledgeDocument
 }
 
 export interface DocumentAudienceApprovalQueueCounts {
   total: number
   notStarted: number
+  preparation: number
   pending: number
   readyToFinalize: number
   completed: number

@@ -112,6 +112,10 @@ const audienceApprovalDueAt = ref(defaultApprovalDueAt())
 const approvalAssignmentDialogVisible = ref(false)
 const approvalAssignmentTarget = ref<DocumentAudienceApproval | null>(null)
 const approvalAssignmentForm = ref({ assignedToUserId: '', dueAt: '', reason: '' })
+const preparationAssignmentDialogVisible = ref(false)
+const preparationAssignmentTarget = ref<KnowledgeDocument | null>(null)
+const preparationAssignmentForm = ref({ assignedToUserId: '', dueAt: '', reason: '' })
+const assigningPreparation = ref(false)
 const businessEvidenceForm = ref({ title: '', detailsHtml: '' })
 const businessEvidenceAttachments = ref<File[]>([])
 const creatingBusinessEvidence = ref(false)
@@ -350,6 +354,7 @@ const audienceCounts = computed(() => ({
 function approvalStageLabel(stage: DocumentAudienceApprovalQueueStage): string {
   return {
     NOT_STARTED: '未发起',
+    PREPARATION: '资料准备中',
     PENDING: '审批中',
     READY_TO_FINALIZE: '待保存结论',
     COMPLETED: '已完成',
@@ -365,6 +370,7 @@ function approvalStageTagType(
     'primary' | 'success' | 'warning' | 'danger' | 'info'
   > = {
     NOT_STARTED: 'info',
+    PREPARATION: 'warning',
     PENDING: 'warning',
     READY_TO_FINALIZE: 'primary',
     COMPLETED: 'success',
@@ -375,11 +381,54 @@ function approvalStageTagType(
 
 function approvalActionLabel(item: KnowledgeDocument): string {
   const stage = approvalQueueByDocument.value.get(item.id)?.stage
+  if (stage === 'PREPARATION') return '准备资料'
   if (stage === 'PENDING') return '查看审批'
   if (stage === 'READY_TO_FINALIZE') return '保存结论'
   if (stage === 'COMPLETED') return '查看结论'
   if (stage === 'REJECTED') return '重新发起'
   return '发起审批'
+}
+
+async function openPreparationAssignment(item: KnowledgeDocument): Promise<void> {
+  preparationAssignmentTarget.value = item
+  const queueItem = approvalQueueByDocument.value.get(item.id)
+  const assignees = await documentsApi.listDocumentAudienceApprovalAssignees(
+    selectedKnowledgeBaseId.value,
+    item.id,
+  )
+  audienceApprovalAssignees.value = assignees
+  preparationAssignmentForm.value = {
+    assignedToUserId: queueItem?.preparation?.assignedToUserId ?? '',
+    dueAt: toLocalDateTime(queueItem?.preparation?.dueAt ?? null) || defaultApprovalDueAt(),
+    reason: queueItem?.preparation?.reason ?? '收集业务证据、确认业务负责人并提出受众建议',
+  }
+  preparationAssignmentDialogVisible.value = true
+}
+
+async function assignPreparation(): Promise<void> {
+  const target = preparationAssignmentTarget.value
+  const form = preparationAssignmentForm.value
+  if (!target || !form.assignedToUserId || !form.reason.trim()) return
+  const dueAt = new Date(form.dueAt)
+  if (!form.dueAt || !Number.isFinite(dueAt.getTime()) || dueAt.getTime() <= Date.now()) {
+    ElMessage.warning('资料准备期限必须晚于当前时间')
+    return
+  }
+  assigningPreparation.value = true
+  try {
+    await documentsApi.assignDocumentAudiencePreparation(selectedKnowledgeBaseId.value, target.id, {
+      assignedToUserId: form.assignedToUserId,
+      dueAt: dueAt.toISOString(),
+      reason: form.reason.trim(),
+    })
+    preparationAssignmentDialogVisible.value = false
+    ElMessage.success('资料准备任务已分派')
+    await Promise.all([documentsQuery.refetch(), audienceApprovalSummaryQuery.refetch()])
+  } catch (error) {
+    ElMessage.error(getErrorMessage(error))
+  } finally {
+    assigningPreparation.value = false
+  }
 }
 
 watch(
@@ -1177,13 +1226,20 @@ function approvalUserName(user: { email: string; name: string | null } | null): 
           <el-icon><Tickets /></el-icon>
           <span>文档受众审批待办</span>
         </div>
-        <strong>{{ audienceApprovalSummaryQuery.data.value.actionable }}</strong>
+        <strong>{{
+          audienceApprovalSummaryQuery.data.value.actionable +
+          audienceApprovalSummaryQuery.data.value.preparationActionable
+        }}</strong>
         <small
-          >可由当前账号处理 · 共
-          {{ audienceApprovalSummaryQuery.data.value.pending }} 条待审批</small
+          >当前账号：资料准备 {{ audienceApprovalSummaryQuery.data.value.preparationActionable }} 条
+          · 正式审批 {{ audienceApprovalSummaryQuery.data.value.actionable }} 条</small
         >
         <el-button
-          v-if="audienceApprovalSummaryQuery.data.value.actionable > 0"
+          v-if="
+            audienceApprovalSummaryQuery.data.value.actionable +
+              audienceApprovalSummaryQuery.data.value.preparationActionable >
+            0
+          "
           link
           type="primary"
           @click="
@@ -1200,6 +1256,9 @@ function approvalUserName(user: { email: string; name: string | null } | null): 
         </div>
         <div>
           <span>未发起</span><strong>{{ approvalQueueCounts.notStarted }}</strong>
+        </div>
+        <div class="is-warning">
+          <span>资料准备中</span><strong>{{ approvalQueueCounts.preparation }}</strong>
         </div>
         <div>
           <span>审批中</span><strong>{{ approvalQueueCounts.pending }}</strong>
@@ -1232,6 +1291,10 @@ function approvalUserName(user: { email: string; name: string | null } | null): 
             <el-option
               :label="`未发起 (${approvalQueueCounts?.notStarted ?? 0})`"
               value="NOT_STARTED"
+            />
+            <el-option
+              :label="`资料准备中 (${approvalQueueCounts?.preparation ?? 0})`"
+              value="PREPARATION"
             />
             <el-option :label="`审批中 (${approvalQueueCounts?.pending ?? 0})`" value="PENDING" />
             <el-option
@@ -1349,6 +1412,14 @@ function approvalUserName(user: { email: string; name: string | null } | null): 
               >
                 {{ approvalStageLabel(approvalQueueByDocument.get(item.id)!.stage) }}
               </el-tag>
+              <span v-if="approvalWorkspace && approvalQueueByDocument.get(item.id)?.preparation">
+                准备人：{{
+                  approvalUserName(
+                    approvalQueueByDocument.get(item.id)!.preparation!.assignedToUser,
+                  )
+                }}
+                · 截止 {{ formatDate(approvalQueueByDocument.get(item.id)!.preparation!.dueAt) }}
+              </span>
             </div>
             <div class="document-state">
               <el-tag :type="displayState(item).type" effect="light"
@@ -1377,6 +1448,22 @@ function approvalUserName(user: { email: string; name: string | null } | null): 
               }}</small>
             </div>
             <div class="document-row-actions">
+              <el-button
+                v-if="
+                  approvalWorkspace &&
+                  ['NOT_STARTED', 'PREPARATION'].includes(
+                    approvalQueueByDocument.get(item.id)?.stage ?? '',
+                  )
+                "
+                link
+                :icon="Tickets"
+                @click="openPreparationAssignment(item)"
+                >{{
+                  approvalQueueByDocument.get(item.id)?.stage === 'PREPARATION'
+                    ? '改派准备'
+                    : '分派准备'
+                }}</el-button
+              >
               <el-button
                 v-if="
                   !approvalWorkspace &&
@@ -1952,19 +2039,29 @@ function approvalUserName(user: { email: string; name: string | null } | null): 
 
     <el-drawer
       v-model="audienceApprovalTodoDrawerVisible"
-      title="我的文档审批待办"
+      title="我的文档治理待办"
       size="min(720px, 96vw)"
       class="document-approval-todo-drawer"
     >
       <el-alert
         title="待办来自实时审批状态"
-        description="显示当前账号可处理的审批，以及管理范围内已超过明确期限、需要人工升级或改派的记录。超时不会自动批准或驳回。"
+        description="资料准备只负责收集证据和提出建议；正式审批由另一名成员批准或驳回。任何超时都不会自动改变受众结论。"
         type="info"
         show-icon
         :closable="false"
       />
       <div class="document-approval-todo-summary">
+        <span
+          >准备资料
+          {{ audienceApprovalSummaryQuery.data.value?.preparationActionable ?? 0 }} 条</span
+        >
         <span>可处理 {{ audienceApprovalSummaryQuery.data.value?.actionable ?? 0 }} 条</span>
+        <el-tag
+          v-if="audienceApprovalSummaryQuery.data.value?.preparationOverdue"
+          type="danger"
+          effect="plain"
+          >准备超时 {{ audienceApprovalSummaryQuery.data.value.preparationOverdue }} 条</el-tag
+        >
         <el-tag v-if="audienceApprovalSummaryQuery.data.value?.overdue" type="danger" effect="plain"
           >超时 {{ audienceApprovalSummaryQuery.data.value.overdue }} 条</el-tag
         >
@@ -1978,9 +2075,60 @@ function approvalUserName(user: { email: string; name: string | null } | null): 
           >刷新</el-button
         >
       </div>
+      <div
+        v-if="audienceApprovalSummaryQuery.data.value?.preparationItems.length"
+        class="document-approval-todo-list"
+      >
+        <article
+          v-for="todo in audienceApprovalSummaryQuery.data.value.preparationItems"
+          :key="todo.preparationId"
+          class="document-approval-todo-item"
+          :class="{ 'is-overdue': todo.overdue }"
+        >
+          <div class="document-approval-todo-head">
+            <div>
+              <strong>{{ todo.documentName }}</strong>
+              <span>资料准备 · V{{ todo.documentVersion }}</span>
+            </div>
+            <el-tag :type="todo.overdue ? 'danger' : 'warning'" effect="plain">
+              {{ todo.overdue ? '准备已超期' : '准备中' }}
+            </el-tag>
+          </div>
+          <dl>
+            <div>
+              <dt>分派人</dt>
+              <dd>{{ todo.assignedByDisplayName }}</dd>
+            </div>
+            <div>
+              <dt>准备负责人</dt>
+              <dd>{{ todo.assignedToDisplayName }}</dd>
+            </div>
+            <div>
+              <dt>完成期限</dt>
+              <dd>{{ formatDate(todo.dueAt) }}</dd>
+            </div>
+            <div>
+              <dt>准备要求</dt>
+              <dd>{{ todo.reason }}</dd>
+            </div>
+          </dl>
+          <div class="document-approval-todo-actions">
+            <small>分派于 {{ formatDate(todo.createdAt) }}</small>
+            <el-button
+              type="primary"
+              size="small"
+              @click="openAudienceApprovalTodo(todo.documentId)"
+              >准备资料</el-button
+            >
+          </div>
+        </article>
+      </div>
       <el-empty
-        v-if="!audienceApprovalSummaryQuery.data.value?.items.length"
-        description="当前没有可处理的文档审批待办"
+        v-if="
+          !audienceApprovalSummaryQuery.data.value?.items.length &&
+          !audienceApprovalSummaryQuery.data.value?.preparationItems.length
+        "
+        description="当前没有文档治理待办"
       />
       <div v-else class="document-approval-todo-list">
         <article
@@ -2058,6 +2206,73 @@ function approvalUserName(user: { email: string; name: string | null } | null): 
         :closable="false"
       />
     </el-drawer>
+
+    <el-dialog
+      v-model="preparationAssignmentDialogVisible"
+      :title="
+        approvalQueueByDocument.get(preparationAssignmentTarget?.id ?? '')?.stage === 'PREPARATION'
+          ? '改派资料准备'
+          : '分派资料准备'
+      "
+      width="min(520px, 94vw)"
+    >
+      <el-alert
+        title="这不是审批决定"
+        description="准备负责人负责收集业务证据、确认业务内容负责人并提出受众建议。只有后续正式审批通过并保存结论后，文档才算治理完成。"
+        type="info"
+        show-icon
+        :closable="false"
+      />
+      <el-form :model="preparationAssignmentForm" label-position="top">
+        <el-form-item label="资料准备负责人" required>
+          <el-select
+            v-model="preparationAssignmentForm.assignedToUserId"
+            filterable
+            class="form-full-width"
+            placeholder="选择拥有该文档管理权限的成员"
+          >
+            <el-option
+              v-for="user in audienceApprovalAssignees"
+              :key="user.id"
+              :label="approvalUserName(user)"
+              :value="user.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="完成期限" required>
+          <el-date-picker
+            v-model="preparationAssignmentForm.dueAt"
+            type="datetime"
+            value-format="YYYY-MM-DDTHH:mm"
+            class="form-full-width"
+          />
+        </el-form-item>
+        <el-form-item label="准备要求" required>
+          <el-input
+            v-model="preparationAssignmentForm.reason"
+            type="textarea"
+            :rows="3"
+            maxlength="500"
+            show-word-limit
+            placeholder="例如：核对文档用途，上传业务评审记录，填写业务负责人并提出受众建议。"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="preparationAssignmentDialogVisible = false">取消</el-button>
+        <el-button
+          type="primary"
+          :loading="assigningPreparation"
+          :disabled="
+            !preparationAssignmentForm.assignedToUserId ||
+            !preparationAssignmentForm.dueAt ||
+            !preparationAssignmentForm.reason.trim()
+          "
+          @click="assignPreparation"
+          >确认分派</el-button
+        >
+      </template>
+    </el-dialog>
 
     <el-dialog
       v-model="approvalAssignmentDialogVisible"

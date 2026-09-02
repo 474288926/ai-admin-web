@@ -9,6 +9,7 @@ import {
   listDocuments,
   getDocument,
   getDocumentAudienceApprovalSummary,
+  assignDocumentAudiencePreparation,
   reindexDocument,
   retryDocumentBatch,
   retryDocumentJob,
@@ -149,6 +150,24 @@ describe('documents api', () => {
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({
+            preparationPending: 1,
+            preparationActionable: 1,
+            preparationOverdue: 0,
+            preparationItems: [
+              {
+                preparationId: '8f1f5613-21a3-483f-a513-b61603362d55',
+                documentId,
+                documentName: '运维手册.md',
+                documentVersion: 2,
+                assignedToUserId: '550e8400-e29b-41d4-a716-446655440000',
+                assignedToDisplayName: '准备人',
+                assignedByDisplayName: '管理员',
+                dueAt: '2026-09-03T01:00:00.000Z',
+                reason: '补充业务证据',
+                createdAt: '2026-09-02T01:00:00.000Z',
+                overdue: false,
+              },
+            ],
             pending: 2,
             actionable: 1,
             overdue: 1,
@@ -190,6 +209,53 @@ describe('documents api', () => {
       ageHours: 25,
       assignedToDisplayName: '审批人',
     })
+    expect(summary.preparationItems[0]).toMatchObject({
+      assignedToDisplayName: '准备人',
+      reason: '补充业务证据',
+    })
+  })
+
+  it('assigns document audience preparation independently from approval', async () => {
+    const preparation = {
+      id: '8f1f5613-21a3-483f-a513-b61603362d55',
+      documentId,
+      documentChecksumSha256: 'a'.repeat(64),
+      documentVersion: 2,
+      assignedToUserId: '550e8400-e29b-41d4-a716-446655440000',
+      assignedByUserId: '8bd95dfc-d44a-4837-995a-b2d95cc45663',
+      assignedToUser: {
+        id: '550e8400-e29b-41d4-a716-446655440000',
+        email: 'preparer@example.com',
+        name: '准备人',
+      },
+      assignedByUser: {
+        id: '8bd95dfc-d44a-4837-995a-b2d95cc45663',
+        email: 'admin@example.com',
+        name: '管理员',
+      },
+      dueAt: '2026-09-03T01:00:00.000Z',
+      reason: '收集业务证据',
+      completedAt: null,
+      completedByUserId: null,
+      createdAt: '2026-09-02T01:00:00.000Z',
+      updatedAt: '2026-09-02T01:00:00.000Z',
+    }
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(preparation), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    await assignDocumentAudiencePreparation(knowledgeBaseId, documentId, {
+      assignedToUserId: preparation.assignedToUserId,
+      dueAt: preparation.dueAt,
+      reason: preparation.reason,
+    })
+
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain('/preparation/assignment')
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ method: 'POST' })
   })
 
   it('uploads files as multipart batch with an idempotency key', async () => {
