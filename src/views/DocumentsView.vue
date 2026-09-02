@@ -51,6 +51,7 @@ const page = ref(1)
 const selectedKnowledgeBaseId = ref('')
 const search = ref('')
 const statusFilter = ref<'ALL' | 'PROCESSING' | 'READY' | 'FAILED'>('ALL')
+const audienceFilter = ref<'ALL' | 'UNCONFIRMED' | 'APPROVED' | 'REJECTED'>('ALL')
 const uploadDialogVisible = ref(false)
 const selectedFiles = ref<File[]>([])
 const dragActive = ref(false)
@@ -178,12 +179,22 @@ const filteredDocuments = computed(() => {
   const keyword = search.value.trim().toLocaleLowerCase()
   return documents.value.filter((item) => {
     const state = displayState(item).key
+    const audienceState = item.audienceEvidence
+      ? item.audienceEvidence.decision
+      : 'UNCONFIRMED'
     return (
       (statusFilter.value === 'ALL' || state === statusFilter.value) &&
+      (audienceFilter.value === 'ALL' || audienceState === audienceFilter.value) &&
       (!keyword || item.originalName.toLocaleLowerCase().includes(keyword))
     )
   })
 })
+
+const audienceCounts = computed(() => ({
+  unconfirmed: documents.value.filter((item) => !item.audienceEvidence).length,
+  approved: documents.value.filter((item) => item.audienceEvidence?.decision === 'APPROVED').length,
+  rejected: documents.value.filter((item) => item.audienceEvidence?.decision === 'REJECTED').length,
+}))
 
 watch(
   () =>
@@ -645,6 +656,16 @@ function formatDate(value: string): string {
               label="处理中"
               value="PROCESSING"
             /><el-option label="已就绪" value="READY" /><el-option label="失败" value="FAILED" />
+          </el-select>
+          <el-select
+            v-model="audienceFilter"
+            class="document-status-filter"
+            aria-label="受众证据筛选"
+          >
+            <el-option label="全部受众证据" value="ALL" />
+            <el-option :label="`未确认 (${audienceCounts.unconfirmed})`" value="UNCONFIRMED" />
+            <el-option :label="`已批准 (${audienceCounts.approved})`" value="APPROVED" />
+            <el-option :label="`已驳回 (${audienceCounts.rejected})`" value="REJECTED" />
           </el-select>
         </div>
         <div class="toolbar-meta">
