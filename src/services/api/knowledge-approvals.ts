@@ -1,6 +1,9 @@
 import { z } from 'zod'
 
 import type {
+  ApprovalComplianceReportSummary,
+  ApprovalReportStatus,
+  ApprovalReportType,
   KnowledgeApproval,
   KnowledgeApprovalCapabilities,
   KnowledgeApprovalDecision,
@@ -121,6 +124,73 @@ const capabilitiesSchema = z.object({
   blocker: z.string().nullable(),
   roles: z.array(z.object({ role: roleSchema, users: z.array(userSchema) })),
 })
+const reportTypeSchema = z.enum(['ALL', 'DOCUMENT_AUDIENCE_CONTRACT', 'DOCUMENT_AUDIENCE_APPROVAL'])
+const reportStatusSchema = z.union([z.literal('ALL'), statusSchema])
+const complianceReportSummarySchema = z.object({
+  organization: z.object({ id: z.uuid(), name: z.string() }),
+  filters: z.object({
+    organizationId: z.uuid(),
+    type: reportTypeSchema,
+    status: reportStatusSchema,
+    from: z.iso.datetime().nullable(),
+    to: z.iso.datetime().nullable(),
+  }),
+  total: z.number().int().nonnegative(),
+  byType: z.object({
+    DOCUMENT_AUDIENCE_CONTRACT: z.number().int().nonnegative(),
+    DOCUMENT_AUDIENCE_APPROVAL: z.number().int().nonnegative(),
+  }),
+  byStatus: z.object({
+    PENDING: z.number().int().nonnegative(),
+    APPROVED: z.number().int().nonnegative(),
+    REJECTED: z.number().int().nonnegative(),
+    CANCELLED: z.number().int().nonnegative(),
+    INVALIDATED: z.number().int().nonnegative(),
+  }),
+  generatedAt: z.iso.datetime(),
+  controls: z.object({ reportIsReadOnly: z.boolean() }),
+})
+
+function complianceReportParams(input: {
+  organizationId: string
+  type: ApprovalReportType
+  status: ApprovalReportStatus
+  from?: string
+  to?: string
+}): URLSearchParams {
+  const params = new URLSearchParams({
+    organizationId: input.organizationId,
+    type: input.type,
+    status: input.status,
+  })
+  if (input.from) params.set('from', input.from)
+  if (input.to) params.set('to', input.to)
+  return params
+}
+
+export async function getApprovalComplianceReportSummary(input: {
+  organizationId: string
+  type: ApprovalReportType
+  status: ApprovalReportStatus
+  from?: string
+  to?: string
+}): Promise<ApprovalComplianceReportSummary> {
+  const params = complianceReportParams(input)
+  return complianceReportSummarySchema.parse(
+    await apiRequest<unknown>(`/knowledge-approvals/compliance-report/summary?${params}`),
+  )
+}
+
+export function exportApprovalComplianceReport(input: {
+  organizationId: string
+  type: ApprovalReportType
+  status: ApprovalReportStatus
+  from?: string
+  to?: string
+}): Promise<unknown> {
+  const params = complianceReportParams(input)
+  return apiRequest<unknown>(`/knowledge-approvals/compliance-report/export?${params}`)
+}
 
 export async function listKnowledgeApprovals(input: {
   organizationId: string

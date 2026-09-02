@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import {
   Check,
   Close,
+  DataAnalysis,
   Download,
   InfoFilled,
   Plus,
@@ -17,6 +18,8 @@ import { ApiError } from '@/services/api/client'
 import * as approvalApi from '@/services/api/knowledge-approvals'
 import { listOrganizations } from '@/services/api/organizations'
 import type {
+  ApprovalReportStatus,
+  ApprovalReportType,
   KnowledgeApproval,
   KnowledgeApprovalDecision,
   KnowledgeApprovalRole,
@@ -27,6 +30,10 @@ import type {
 const PAGE_SIZE = 20
 const selectedOrganizationId = ref('')
 const selectedStatus = ref<KnowledgeApprovalStatus | ''>('PENDING')
+const reportType = ref<ApprovalReportType>('ALL')
+const reportStatus = ref<ApprovalReportStatus>('ALL')
+const reportDateRange = ref<[Date, Date] | null>(null)
+const exportingReport = ref(false)
 const page = ref(1)
 const drawerOpen = ref(false)
 const selectedApprovalId = ref('')
@@ -50,6 +57,14 @@ const manageableOrganizations = computed(() =>
     ['OWNER', 'ADMIN', 'KNOWLEDGE_ADMIN'].includes(item.currentRole),
   ),
 )
+const selectedOrganization = computed(() =>
+  manageableOrganizations.value.find((item) => item.id === selectedOrganizationId.value),
+)
+const canViewComplianceReport = computed(() =>
+  ['OWNER', 'ADMIN'].includes(selectedOrganization.value?.currentRole ?? ''),
+)
+const reportFrom = computed(() => reportDateRange.value?.[0].toISOString())
+const reportTo = computed(() => reportDateRange.value?.[1].toISOString())
 
 watch(
   manageableOrganizations,
@@ -87,6 +102,25 @@ const capabilitiesQuery = useQuery({
   queryFn: () => approvalApi.getKnowledgeApprovalCapabilities(selectedOrganizationId.value),
   enabled: computed(() => Boolean(selectedOrganizationId.value)),
 })
+const complianceReportQuery = useQuery({
+  queryKey: computed(() => [
+    'approval-compliance-report',
+    selectedOrganizationId.value,
+    reportType.value,
+    reportStatus.value,
+    reportFrom.value,
+    reportTo.value,
+  ]),
+  queryFn: () =>
+    approvalApi.getApprovalComplianceReportSummary({
+      organizationId: selectedOrganizationId.value,
+      type: reportType.value,
+      status: reportStatus.value,
+      from: reportFrom.value,
+      to: reportTo.value,
+    }),
+  enabled: computed(() => Boolean(selectedOrganizationId.value) && canViewComplianceReport.value),
+})
 const detailQuery = useQuery({
   queryKey: computed(() => ['knowledge-approval', selectedApprovalId.value]),
   queryFn: () => approvalApi.getKnowledgeApproval(selectedApprovalId.value),
@@ -98,6 +132,7 @@ const refreshQueries = async (): Promise<void> => {
     queryClient.invalidateQueries({ queryKey: ['knowledge-approvals'] }),
     queryClient.invalidateQueries({ queryKey: ['knowledge-approval'] }),
     queryClient.invalidateQueries({ queryKey: ['knowledge-approval-capabilities'] }),
+    queryClient.invalidateQueries({ queryKey: ['approval-compliance-report'] }),
   ])
 }
 const createMutation = useMutation({
@@ -264,6 +299,44 @@ async function downloadCredential(approval: KnowledgeApproval): Promise<void> {
   }
 }
 
+async function downloadComplianceReport(): Promise<void> {
+  if (!selectedOrganizationId.value || !canViewComplianceReport.value) return
+  exportingReport.value = true
+  try {
+    const report = await approvalApi.exportApprovalComplianceReport({
+      organizationId: selectedOrganizationId.value,
+      type: reportType.value,
+      status: reportStatus.value,
+      from: reportFrom.value,
+      to: reportTo.value,
+    })
+    const timestamp = new Date()
+      .toISOString()
+      .replace(/:/g, '')
+      .replace(/\.\d{3}Z$/, 'Z')
+    downloadJson(
+      report,
+      `approval-compliance-${selectedOrganization.value?.slug ?? 'organization'}-${timestamp}.json`,
+    )
+  } catch (error) {
+    ElMessage.error(errorMessage(error))
+  } finally {
+    exportingReport.value = false
+  }
+}
+
+function downloadJson(value: unknown, filename: string): void {
+  const blob = new Blob([`${JSON.stringify(value, null, 2)}\n`], {
+    type: 'application/json;charset=utf-8',
+  })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  anchor.click()
+  URL.revokeObjectURL(url)
+}
+
 function roleLabel(role: KnowledgeApprovalRole): string {
   return {
     BUSINESS_OWNER: '业务负责人',
@@ -401,6 +474,108 @@ function showMutationError(error: unknown): void {
         已发起审批可以继续保留，但无法在满足独立性规则前变为“已通过”。
       </template>
     </el-alert>
+
+    <section v-if="canViewComplianceReport" class="compliance-report">
+      <header>
+        <div class="approval-title">
+          <span
+            ><el-icon><DataAnalysis /></el-icon
+          ></span>
+          <div>
+            <h3>审批合规报表</h3>
+            <p>企业级审批汇总与只读留档</p>
+          </div>
+        </div>
+        <el-tooltip content="按当前筛选条件导出只读合规记录">
+          <el-button
+            :icon="Download"
+            :loading="exportingReport"
+            :disabled="complianceReportQuery.isLoading.value"
+            @click="downloadComplianceReport"
+            >导出 JSON</el-button
+          >
+        </el-tooltip>
+      </header>
+
+      <div class="compliance-filters">
+        <el-form-item label="审批类型">
+          <el-select v-model="reportType">
+            <el-option label="全部审批" value="ALL" />
+            <el-option label="受众规则契约" value="DOCUMENT_AUDIENCE_CONTRACT" />
+            <el-option label="单篇文档受众审批" value="DOCUMENT_AUDIENCE_APPROVAL" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="审批状态">
+          <el-select v-model="reportStatus">
+            <el-option label="全部状态" value="ALL" />
+            <el-option label="待审批" value="PENDING" />
+            <el-option label="已通过" value="APPROVED" />
+            <el-option label="已驳回" value="REJECTED" />
+            <el-option label="已撤销" value="CANCELLED" />
+            <el-option label="已失效" value="INVALIDATED" />
+          </el-select>
+        </el-form-item>
+        <el-form-item class="compliance-date-filter" label="发起时间">
+          <el-date-picker
+            v-model="reportDateRange"
+            type="datetimerange"
+            start-placeholder="开始时间"
+            end-placeholder="结束时间"
+            range-separator="至"
+          />
+        </el-form-item>
+      </div>
+
+      <el-alert
+        v-if="complianceReportQuery.isError.value"
+        title="审批合规报表加载失败"
+        :description="errorMessage(complianceReportQuery.error.value)"
+        type="error"
+        show-icon
+        :closable="false"
+      />
+      <div v-else v-loading="complianceReportQuery.isLoading.value" class="compliance-summary">
+        <div class="compliance-total">
+          <span>记录总数</span>
+          <strong>{{ complianceReportQuery.data.value?.total ?? 0 }}</strong>
+        </div>
+        <div>
+          <span>受众规则契约</span>
+          <strong>{{
+            complianceReportQuery.data.value?.byType.DOCUMENT_AUDIENCE_CONTRACT ?? 0
+          }}</strong>
+        </div>
+        <div>
+          <span>单篇文档审批</span>
+          <strong>{{
+            complianceReportQuery.data.value?.byType.DOCUMENT_AUDIENCE_APPROVAL ?? 0
+          }}</strong>
+        </div>
+        <div>
+          <span>待审批</span>
+          <strong>{{ complianceReportQuery.data.value?.byStatus.PENDING ?? 0 }}</strong>
+        </div>
+        <div>
+          <span>已通过</span>
+          <strong>{{ complianceReportQuery.data.value?.byStatus.APPROVED ?? 0 }}</strong>
+        </div>
+        <div>
+          <span>已驳回</span>
+          <strong>{{ complianceReportQuery.data.value?.byStatus.REJECTED ?? 0 }}</strong>
+        </div>
+        <div>
+          <span>已撤销</span>
+          <strong>{{ complianceReportQuery.data.value?.byStatus.CANCELLED ?? 0 }}</strong>
+        </div>
+        <div>
+          <span>已失效</span>
+          <strong>{{ complianceReportQuery.data.value?.byStatus.INVALIDATED ?? 0 }}</strong>
+        </div>
+      </div>
+      <p class="compliance-note">
+        导出文件不能回写审批状态，且不包含业务证据正文和附件，仅保留证据编号、标题与审批留痕。
+      </p>
+    </section>
 
     <section class="approval-results">
       <header>
@@ -833,7 +1008,8 @@ function showMutationError(error: unknown): void {
   gap: 9px;
 }
 .approval-controls,
-.approval-results {
+.approval-results,
+.compliance-report {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fff;
@@ -850,6 +1026,69 @@ function showMutationError(error: unknown): void {
 }
 .approval-results {
   overflow: hidden;
+}
+.compliance-report {
+  display: grid;
+  gap: 16px;
+  padding: 16px 18px;
+}
+.compliance-report > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.compliance-report h3 {
+  margin: 0;
+}
+.compliance-report header p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.compliance-filters {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.7fr) minmax(150px, 0.6fr) minmax(360px, 1.7fr);
+  gap: 14px;
+}
+.compliance-filters :deep(.el-form-item) {
+  margin-bottom: 0;
+}
+.compliance-filters :deep(.el-select),
+.compliance-date-filter :deep(.el-date-editor) {
+  width: 100%;
+}
+.compliance-summary {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(88px, 1fr));
+  min-height: 78px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.compliance-summary > div {
+  display: grid;
+  gap: 5px;
+  align-content: center;
+  padding: 12px 10px;
+  border-right: 1px solid var(--line);
+}
+.compliance-summary > div:last-child {
+  border-right: 0;
+}
+.compliance-summary span,
+.compliance-note {
+  color: var(--muted);
+  font-size: 11px;
+}
+.compliance-summary strong {
+  font-size: 19px;
+}
+.compliance-total strong {
+  color: #3568bc;
+}
+.compliance-note {
+  margin: -4px 0 0;
+  line-height: 1.6;
 }
 .approval-results > header {
   padding: 16px 18px;
@@ -1080,6 +1319,21 @@ function showMutationError(error: unknown): void {
   }
   .approval-controls :deep(.el-form-item) {
     min-width: 0;
+  }
+  .compliance-report > header {
+    align-items: flex-start;
+  }
+  .compliance-filters {
+    grid-template-columns: 1fr;
+  }
+  .compliance-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .compliance-summary > div:nth-child(2n) {
+    border-right: 0;
+  }
+  .compliance-summary > div:nth-child(n + 3) {
+    border-top: 1px solid var(--line);
   }
   .approval-table-wrap {
     min-height: 260px;

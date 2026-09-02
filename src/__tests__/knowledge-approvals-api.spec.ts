@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   assignKnowledgeApprovalRoles,
   decideKnowledgeApproval,
+  exportApprovalComplianceReport,
+  getApprovalComplianceReportSummary,
   getKnowledgeApprovalCapabilities,
   listKnowledgeApprovals,
 } from '@/services/api/knowledge-approvals'
@@ -153,5 +155,73 @@ describe('knowledge approvals api', () => {
         body: expect.stringContaining('RETRIEVAL_MAINTAINER'),
       }),
     )
+  })
+
+  it('loads enterprise compliance totals with type, status and date filters', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          organization: { id: organizationId, name: '测试企业' },
+          filters: {
+            organizationId,
+            type: 'DOCUMENT_AUDIENCE_APPROVAL',
+            status: 'APPROVED',
+            from: '2026-09-01T00:00:00.000Z',
+            to: '2026-09-02T23:59:59.000Z',
+          },
+          total: 2,
+          byType: { DOCUMENT_AUDIENCE_CONTRACT: 0, DOCUMENT_AUDIENCE_APPROVAL: 2 },
+          byStatus: { PENDING: 0, APPROVED: 2, REJECTED: 0, CANCELLED: 0, INVALIDATED: 0 },
+          generatedAt: '2026-09-02T12:00:00.000Z',
+          controls: { reportIsReadOnly: true },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await getApprovalComplianceReportSummary({
+      organizationId,
+      type: 'DOCUMENT_AUDIENCE_APPROVAL',
+      status: 'APPROVED',
+      from: '2026-09-01T00:00:00.000Z',
+      to: '2026-09-02T23:59:59.000Z',
+    })
+
+    const requestUrl = new URL(String(fetchMock.mock.calls[0]?.[0]), 'http://localhost')
+    expect(requestUrl.pathname).toContain('/knowledge-approvals/compliance-report/summary')
+    expect(Object.fromEntries(requestUrl.searchParams)).toMatchObject({
+      organizationId,
+      type: 'DOCUMENT_AUDIENCE_APPROVAL',
+      status: 'APPROVED',
+      from: '2026-09-01T00:00:00.000Z',
+      to: '2026-09-02T23:59:59.000Z',
+    })
+    expect(result.total).toBe(2)
+    expect(result.controls.reportIsReadOnly).toBe(true)
+  })
+
+  it('uses the dedicated read-only compliance export endpoint', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ reportType: 'APPROVAL_COMPLIANCE_EXPORT', records: [] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    await exportApprovalComplianceReport({
+      organizationId,
+      type: 'ALL',
+      status: 'ALL',
+    })
+
+    const requestUrl = new URL(String(fetchMock.mock.calls[0]?.[0]), 'http://localhost')
+    expect(requestUrl.pathname).toContain('/knowledge-approvals/compliance-report/export')
+    expect(Object.fromEntries(requestUrl.searchParams)).toMatchObject({
+      organizationId,
+      type: 'ALL',
+      status: 'ALL',
+    })
   })
 })

@@ -10,6 +10,8 @@ export type KnowledgeApprovalRole =
   | 'KNOWLEDGE_OPERATIONS'
   | 'RETRIEVAL_MAINTAINER'
 export type KnowledgeApprovalDecision = 'APPROVED' | 'REJECTED'
+export type ApprovalReportType = 'ALL' | 'DOCUMENT_AUDIENCE_CONTRACT' | 'DOCUMENT_AUDIENCE_APPROVAL'
+export type ApprovalReportStatus = KnowledgeApprovalStatus | 'ALL'
 
 export interface KnowledgeApprovalUser {
   id: string
@@ -122,4 +124,23 @@ export interface PaginatedKnowledgeApprovals {
     totalPages: number
     hasNextPage: boolean
   }
+}
+
+export interface ApprovalComplianceReportSummary {
+  organization: { id: string; name: string }
+  filters: {
+    organizationId: string
+    type: ApprovalReportType
+    status: ApprovalReportStatus
+    from: string | null
+    to: string | null
+  }
+  total: number
+  byType: {
+    DOCUMENT_AUDIENCE_CONTRACT: number
+    DOCUMENT_AUDIENCE_APPROVAL: number
+  }
+  byStatus: Record<KnowledgeApprovalStatus, number>
+  generatedAt: string
+  controls: { reportIsReadOnly: boolean }
 }
