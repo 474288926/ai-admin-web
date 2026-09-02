@@ -26,6 +26,11 @@ export interface KnowledgeApprovalStep {
   decidedByUserId: string | null
   decidedByUser: KnowledgeApprovalUser | null
   decidedAt: string | null
+  assignedToUserId: string | null
+  assignedToUser: KnowledgeApprovalUser | null
+  assignedByUserId: string | null
+  assignedByUser: KnowledgeApprovalUser | null
+  assignedAt: string | null
   canDecide: boolean
   ineligibleReason: string | null
 }
@@ -71,7 +76,12 @@ export interface KnowledgeApproval {
     actorUser: KnowledgeApprovalUser | null
   }>
   progress: { approved: number; required: number }
-  capabilities: { canCancel: boolean; canReissue: boolean; canExport: boolean }
+  capabilities: {
+    canCancel: boolean
+    canReissue: boolean
+    canExport: boolean
+    canAssign: boolean
+  }
   snapshotCurrent: boolean
   subject?: Record<string, unknown>
   impactSnapshot?: {

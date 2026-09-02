@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
+  assignKnowledgeApprovalRoles,
   decideKnowledgeApproval,
   getKnowledgeApprovalCapabilities,
   listKnowledgeApprovals,
@@ -40,13 +41,18 @@ const approval = {
       decidedByUserId: null,
       decidedByUser: null,
       decidedAt: null,
+      assignedToUserId: null,
+      assignedToUser: null,
+      assignedByUserId: null,
+      assignedByUser: null,
+      assignedAt: null,
       canDecide: true,
       ineligibleReason: null,
     },
   ],
   events: [],
   progress: { approved: 0, required: 3 },
-  capabilities: { canCancel: true, canReissue: false, canExport: true },
+  capabilities: { canCancel: true, canReissue: false, canExport: true, canAssign: true },
   snapshotCurrent: true,
 }
 
@@ -119,6 +125,33 @@ describe('knowledge approvals api', () => {
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining(`/knowledge-approvals/${approvalId}/decision`),
       expect.objectContaining({ method: 'POST', body: expect.stringContaining('"revision":0') }),
+    )
+  })
+
+  it('sends all three distinct role assignments with the revision', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(approval), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    await assignKnowledgeApprovalRoles(approvalId, {
+      revision: 0,
+      assignments: [
+        { role: 'BUSINESS_OWNER', userId: user.id },
+        { role: 'KNOWLEDGE_OPERATIONS', userId: '9c221bad-289e-4e13-85b9-90e5c1a6f9ac' },
+        { role: 'RETRIEVAL_MAINTAINER', userId: 'a2565fb8-d895-4935-a807-f9ef95195c81' },
+      ],
+    })
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining(`/knowledge-approvals/${approvalId}/assignments`),
+      expect.objectContaining({
+        method: 'POST',
+        body: expect.stringContaining('RETRIEVAL_MAINTAINER'),
+      }),
     )
   })
 })

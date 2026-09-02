@@ -23,6 +23,11 @@ const stepSchema = z.object({
   decidedByUserId: z.uuid().nullable(),
   decidedByUser: userSchema.nullable(),
   decidedAt: z.iso.datetime().nullable(),
+  assignedToUserId: z.uuid().nullable(),
+  assignedToUser: userSchema.nullable(),
+  assignedByUserId: z.uuid().nullable(),
+  assignedByUser: userSchema.nullable(),
+  assignedAt: z.iso.datetime().nullable(),
   canDecide: z.boolean(),
   ineligibleReason: z.string().nullable(),
 })
@@ -72,6 +77,7 @@ const approvalSchema = z.object({
     canCancel: z.boolean(),
     canReissue: z.boolean(),
     canExport: z.boolean(),
+    canAssign: z.boolean(),
   }),
   snapshotCurrent: z.boolean(),
   subject: z.record(z.string(), z.unknown()).optional(),
@@ -167,6 +173,21 @@ export async function decideKnowledgeApproval(
 ): Promise<KnowledgeApproval> {
   return approvalSchema.parse(
     await apiRequest<unknown>(`/knowledge-approvals/${id}/decision`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  )
+}
+
+export async function assignKnowledgeApprovalRoles(
+  id: string,
+  input: {
+    revision: number
+    assignments: Array<{ role: KnowledgeApprovalRole; userId: string }>
+  },
+): Promise<KnowledgeApproval> {
+  return approvalSchema.parse(
+    await apiRequest<unknown>(`/knowledge-approvals/${id}/assignments`, {
       method: 'POST',
       body: JSON.stringify(input),
     }),

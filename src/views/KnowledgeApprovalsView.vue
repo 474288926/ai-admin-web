@@ -1,7 +1,16 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
-import { Check, Close, Download, InfoFilled, Plus, Refresh, Stamp } from '@element-plus/icons-vue'
+import {
+  Check,
+  Close,
+  Download,
+  InfoFilled,
+  Plus,
+  Refresh,
+  Stamp,
+  UserFilled,
+} from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 import { ApiError } from '@/services/api/client'
@@ -22,10 +31,16 @@ const page = ref(1)
 const drawerOpen = ref(false)
 const selectedApprovalId = ref('')
 const decisionDialogOpen = ref(false)
+const assignmentDialogOpen = ref(false)
 const decisionForm = reactive({
   role: 'BUSINESS_OWNER' as KnowledgeApprovalRole,
   decision: 'APPROVED' as KnowledgeApprovalDecision,
   comment: '',
+})
+const assignmentForm = reactive<Record<KnowledgeApprovalRole, string>>({
+  BUSINESS_OWNER: '',
+  KNOWLEDGE_OPERATIONS: '',
+  RETRIEVAL_MAINTAINER: '',
 })
 const queryClient = useQueryClient()
 
@@ -112,6 +127,22 @@ const decisionMutation = useMutation({
   },
   onError: (error) => ElMessage.error(errorMessage(error)),
 })
+const assignmentMutation = useMutation({
+  mutationFn: () => {
+    const approval = detailQuery.data.value
+    if (!approval) throw new Error('审批详情尚未加载')
+    return approvalApi.assignKnowledgeApprovalRoles(approval.id, {
+      revision: approval.revision,
+      assignments: requiredRoles.map((role) => ({ role, userId: assignmentForm[role] })),
+    })
+  },
+  onSuccess: async () => {
+    ElMessage.success('审批职责分工已保存')
+    assignmentDialogOpen.value = false
+    await refreshQueries()
+  },
+  onError: (error) => ElMessage.error(errorMessage(error)),
+})
 const cancelMutation = useMutation({
   mutationFn: async () => {
     const approval = detailQuery.data.value
@@ -153,6 +184,11 @@ const approvals = computed(() => approvalsQuery.data.value?.items ?? [])
 const meta = computed(() => approvalsQuery.data.value?.meta)
 const detail = computed(() => detailQuery.data.value)
 const impact = computed(() => detail.value?.impactSnapshot?.summary)
+const requiredRoles: KnowledgeApprovalRole[] = [
+  'BUSINESS_OWNER',
+  'KNOWLEDGE_OPERATIONS',
+  'RETRIEVAL_MAINTAINER',
+]
 
 function openDetail(approval: KnowledgeApproval): void {
   selectedApprovalId.value = approval.id
@@ -168,6 +204,39 @@ function openDecision(step: KnowledgeApprovalStep, decision: KnowledgeApprovalDe
   decisionForm.decision = decision
   decisionForm.comment = ''
   decisionDialogOpen.value = true
+}
+
+function openAssignments(): void {
+  const approval = detail.value
+  if (!approval) return
+  for (const role of requiredRoles) {
+    const step = approval.steps.find((item) => item.role === role)
+    assignmentForm[role] = step?.assignedToUserId ?? step?.decidedByUserId ?? ''
+  }
+  assignmentDialogOpen.value = true
+}
+
+function candidateUsers(role: KnowledgeApprovalRole) {
+  return capabilitiesQuery.data.value?.roles.find((item) => item.role === role)?.users ?? []
+}
+
+function assignmentOptionDisabled(role: KnowledgeApprovalRole, userId: string): boolean {
+  return requiredRoles.some(
+    (otherRole) => otherRole !== role && assignmentForm[otherRole] === userId,
+  )
+}
+
+async function submitAssignments(): Promise<void> {
+  const userIds = requiredRoles.map((role) => assignmentForm[role])
+  if (userIds.some((userId) => !userId)) {
+    ElMessage.warning('请为三个职责都指定审批人')
+    return
+  }
+  if (new Set(userIds).size !== requiredRoles.length) {
+    ElMessage.warning('三个职责必须分配给三个不同账号')
+    return
+  }
+  await assignmentMutation.mutateAsync()
 }
 
 async function submitDecision(): Promise<void> {
@@ -535,8 +604,20 @@ function showMutationError(error: unknown): void {
 
           <section class="steps-section">
             <header>
-              <h3>独立签署</h3>
-              <p>三个职责必须由三个不同账号分别确认</p>
+              <div>
+                <h3>独立签署</h3>
+                <p>先由管理员将三个职责分配给三个不同账号，再由被分配人员签署</p>
+              </div>
+              <el-tooltip content="从合格成员中为每个职责指定一名审批人">
+                <el-button
+                  v-if="detail.capabilities.canAssign"
+                  :icon="UserFilled"
+                  type="primary"
+                  plain
+                  @click="openAssignments"
+                  >设置分工</el-button
+                >
+              </el-tooltip>
             </header>
             <article v-for="step in detail.steps" :key="step.id" class="approval-step">
               <div class="step-main">
@@ -570,7 +651,14 @@ function showMutationError(error: unknown): void {
                     {{ step.decidedByUser.name || step.decidedByUser.email }} ·
                     {{ formatDateTime(step.decidedAt) }}
                   </p>
-                  <p v-else>{{ step.ineligibleReason || '等待具备相应职责权限的成员签署' }}</p>
+                  <p v-else-if="step.assignedToUser" class="assignment-person">
+                    已分配：{{ step.assignedToUser.name || step.assignedToUser.email }}
+                    <span v-if="step.assignedToUser.name">{{ step.assignedToUser.email }}</span>
+                  </p>
+                  <p v-else>尚未分配该职责的审批人</p>
+                  <p v-if="!step.decidedByUser && step.ineligibleReason" class="step-reason">
+                    {{ step.ineligibleReason }}
+                  </p>
                   <blockquote v-if="step.comment">{{ step.comment }}</blockquote>
                 </div>
               </div>
@@ -658,6 +746,43 @@ function showMutationError(error: unknown): void {
           :loading="decisionMutation.isPending.value"
           @click="submitDecision"
           >确认{{ decisionForm.decision === 'APPROVED' ? '批准' : '驳回' }}</el-button
+        >
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="assignmentDialogOpen" title="设置审批分工" width="min(560px, 94vw)">
+      <el-alert
+        title="三个职责必须分配给三个不同账号"
+        description="保存后，只有被分配的成员可以签署对应职责；已完成签署的职责不能改派。"
+        type="info"
+        show-icon
+        :closable="false"
+      />
+      <el-form label-position="top" class="assignment-form">
+        <el-form-item v-for="role in requiredRoles" :key="role" :label="roleLabel(role)">
+          <el-select
+            v-model="assignmentForm[role]"
+            :placeholder="`选择${roleLabel(role)}`"
+            :disabled="Boolean(detail?.steps.find((step) => step.role === role)?.decision)"
+          >
+            <el-option
+              v-for="user in candidateUsers(role)"
+              :key="user.id"
+              :label="user.name ? `${user.name} (${user.email})` : user.email"
+              :value="user.id"
+              :disabled="assignmentOptionDisabled(role, user.id)"
+            />
+          </el-select>
+          <p class="assignment-help">{{ roleDescription(role) }}</p>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="assignmentDialogOpen = false">取消</el-button>
+        <el-button
+          type="primary"
+          :loading="assignmentMutation.isPending.value"
+          @click="submitAssignments"
+          >保存分工</el-button
         >
       </template>
     </el-dialog>
@@ -823,6 +948,12 @@ function showMutationError(error: unknown): void {
   display: grid;
   gap: 12px;
 }
+.steps-section > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
 .impact-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -888,6 +1019,18 @@ function showMutationError(error: unknown): void {
   color: var(--muted);
   font-size: 11px;
 }
+.step-main .assignment-person {
+  color: #344b70;
+  font-weight: 600;
+}
+.assignment-person span {
+  margin-left: 6px;
+  color: var(--muted);
+  font-weight: 400;
+}
+.step-main .step-reason {
+  color: #8a6a38;
+}
 .step-main blockquote {
   margin: 9px 0 0;
   padding-left: 10px;
@@ -906,6 +1049,18 @@ function showMutationError(error: unknown): void {
 }
 .decision-form {
   margin-top: 18px;
+}
+.assignment-form {
+  margin-top: 18px;
+}
+.assignment-form :deep(.el-select) {
+  width: 100%;
+}
+.assignment-help {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
 }
 @media (max-width: 760px) {
   .approval-heading {
@@ -1001,6 +1156,10 @@ function showMutationError(error: unknown): void {
     border-top: 1px solid var(--line);
   }
   .approval-step {
+    flex-direction: column;
+  }
+  .steps-section > header {
+    align-items: stretch;
     flex-direction: column;
   }
   .step-actions {

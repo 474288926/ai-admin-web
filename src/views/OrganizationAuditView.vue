@@ -49,6 +49,7 @@ const actionOptions = [
   { value: 'knowledge_approval.decision_recorded', label: '记录知识审批决定' },
   { value: 'knowledge_approval.cancelled', label: '撤销知识审批' },
   { value: 'knowledge_approval.invalidated', label: '知识审批快照失效' },
+  { value: 'knowledge_approval.roles_assigned', label: '设置知识审批分工' },
 ] as const
 
 const actionLabelByValue = new Map<string, string>(
@@ -286,6 +287,7 @@ function recordSummary(value: unknown): string {
   }
   if (record.action === 'knowledge_approval.cancelled') return '待处理审批已撤销'
   if (record.action === 'knowledge_approval.invalidated') return '契约或知识范围变化，旧审批已失效'
+  if (record.action === 'knowledge_approval.roles_assigned') return '已为三个职责指定独立审批人'
   if (record.action === 'knowledge_backlog.updated') {
     const parts: string[] = []
     const statusTo = changeValue(record, 'statusTo')
