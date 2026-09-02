@@ -410,7 +410,7 @@ export async function getDocumentAudienceEvidence(
   documentId: string,
 ): Promise<DocumentAudienceEvidence | null> {
   const result = await apiRequest<unknown>(
-    `/knowledge-bases/${knowledgeBaseId}/documents/${documentId}/audience-evidence`,
+    `/knowledge-approvals/document-audience/knowledge-bases/${knowledgeBaseId}/documents/${documentId}/evidence`,
   )
   return result === null ? null : documentAudienceEvidenceSchema.parse(result)
 }
@@ -421,7 +421,7 @@ export async function upsertDocumentAudienceEvidence(
   input: UpsertDocumentAudienceEvidenceInput,
 ): Promise<DocumentAudienceEvidence> {
   const result = await apiRequest<unknown>(
-    `/knowledge-bases/${knowledgeBaseId}/documents/${documentId}/audience-evidence`,
+    `/knowledge-approvals/document-audience/knowledge-bases/${knowledgeBaseId}/documents/${documentId}/evidence`,
     { method: 'PUT', body: JSON.stringify(input) },
   )
   return documentAudienceEvidenceSchema.parse(result)
@@ -432,7 +432,7 @@ export async function listDocumentBusinessEvidence(
   documentId: string,
 ): Promise<DocumentBusinessEvidence[]> {
   const result = await apiRequest<unknown>(
-    `/knowledge-bases/${knowledgeBaseId}/documents/${documentId}/business-evidence`,
+    `/knowledge-approvals/document-audience/knowledge-bases/${knowledgeBaseId}/documents/${documentId}/business-evidence`,
   )
   return z.array(documentBusinessEvidenceSchema).parse(result)
 }
@@ -443,7 +443,7 @@ export async function createDocumentBusinessEvidence(
   input: { title: string; details: string; detailsHtml: string },
 ): Promise<DocumentBusinessEvidence> {
   const result = await apiRequest<unknown>(
-    `/knowledge-bases/${knowledgeBaseId}/documents/${documentId}/business-evidence`,
+    `/knowledge-approvals/document-audience/knowledge-bases/${knowledgeBaseId}/documents/${documentId}/business-evidence`,
     { method: 'POST', body: JSON.stringify(input) },
   )
   return documentBusinessEvidenceSchema.parse(result)
@@ -458,7 +458,7 @@ export async function uploadDocumentBusinessEvidenceAttachment(
   const formData = new FormData()
   formData.append('file', file)
   const result = await apiRequest<unknown>(
-    `/knowledge-bases/${knowledgeBaseId}/documents/${documentId}/business-evidence/${evidenceId}/attachments`,
+    `/knowledge-approvals/document-audience/knowledge-bases/${knowledgeBaseId}/documents/${documentId}/business-evidence/${evidenceId}/attachments`,
     { method: 'POST', body: formData },
   )
   return documentBusinessEvidenceAttachmentSchema.parse(result)
@@ -471,7 +471,7 @@ export function readDocumentBusinessEvidenceAttachment(
   attachmentId: string,
 ): Promise<Blob> {
   return apiRequestBlob(
-    `/knowledge-bases/${knowledgeBaseId}/documents/${documentId}/business-evidence/${evidenceId}/attachments/${attachmentId}/content`,
+    `/knowledge-approvals/document-audience/knowledge-bases/${knowledgeBaseId}/documents/${documentId}/business-evidence/${evidenceId}/attachments/${attachmentId}/content`,
   )
 }
 
@@ -480,7 +480,7 @@ export async function listDocumentAudienceApprovals(
   documentId: string,
 ): Promise<DocumentAudienceApproval[]> {
   const result = await apiRequest<unknown>(
-    `/knowledge-bases/${knowledgeBaseId}/documents/${documentId}/audience-approvals`,
+    `/knowledge-approvals/document-audience/knowledge-bases/${knowledgeBaseId}/documents/${documentId}/approvals`,
   )
   return z.array(documentAudienceApprovalSchema).parse(result)
 }
@@ -496,7 +496,7 @@ export async function listDocumentAudienceApprovalAssignees(
   documentId: string,
 ): Promise<Array<{ id: string; email: string; name: string | null }>> {
   const result = await apiRequest<unknown>(
-    `/knowledge-bases/${knowledgeBaseId}/documents/${documentId}/audience-approval-assignees`,
+    `/knowledge-approvals/document-audience/knowledge-bases/${knowledgeBaseId}/documents/${documentId}/assignees`,
   )
   return z.array(documentApprovalUserSchema).parse(result)
 }
@@ -505,7 +505,7 @@ export async function getDocumentAudienceApprovalSummary(
   knowledgeBaseId: string,
 ): Promise<DocumentAudienceApprovalSummary> {
   const result = await apiRequest<unknown>(
-    `/knowledge-bases/${knowledgeBaseId}/documents/audience-approval-summary`,
+    `/knowledge-approvals/document-audience/knowledge-bases/${knowledgeBaseId}/summary`,
   )
   return documentAudienceApprovalSummarySchema.parse(result)
 }
@@ -522,7 +522,7 @@ export async function createDocumentAudienceApproval(
   },
 ): Promise<DocumentAudienceApproval> {
   const result = await apiRequest<unknown>(
-    `/knowledge-bases/${knowledgeBaseId}/documents/${documentId}/audience-approvals`,
+    `/knowledge-approvals/document-audience/knowledge-bases/${knowledgeBaseId}/documents/${documentId}/approvals`,
     { method: 'POST', body: JSON.stringify(input) },
   )
   return documentAudienceApprovalSchema.parse(result)
@@ -535,7 +535,7 @@ export async function assignDocumentAudienceApproval(
   input: { assignedToUserId: string; dueAt: string; reason: string },
 ): Promise<DocumentAudienceApproval> {
   const result = await apiRequest<unknown>(
-    `/knowledge-bases/${knowledgeBaseId}/documents/${documentId}/audience-approvals/${approvalId}/assignment`,
+    `/knowledge-approvals/document-audience/knowledge-bases/${knowledgeBaseId}/documents/${documentId}/approvals/${approvalId}/assignment`,
     { method: 'POST', body: JSON.stringify(input) },
   )
   return documentAudienceApprovalSchema.parse(result)
@@ -549,7 +549,7 @@ export async function decideDocumentAudienceApproval(
   comment?: string,
 ): Promise<DocumentAudienceApproval> {
   const result = await apiRequest<unknown>(
-    `/knowledge-bases/${knowledgeBaseId}/documents/${documentId}/audience-approvals/${approvalId}/decision`,
+    `/knowledge-approvals/document-audience/knowledge-bases/${knowledgeBaseId}/documents/${documentId}/approvals/${approvalId}/decision`,
     { method: 'POST', body: JSON.stringify({ decision, comment: comment || null }) },
   )
   return documentAudienceApprovalSchema.parse(result)

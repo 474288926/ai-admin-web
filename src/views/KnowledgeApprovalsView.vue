@@ -13,6 +13,7 @@ import {
   UserFilled,
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { useRouter } from 'vue-router'
 
 import { ApiError } from '@/services/api/client'
 import * as approvalApi from '@/services/api/knowledge-approvals'
@@ -50,6 +51,7 @@ const assignmentForm = reactive<Record<KnowledgeApprovalRole, string>>({
   RETRIEVAL_MAINTAINER: '',
 })
 const queryClient = useQueryClient()
+const router = useRouter()
 
 const organizationsQuery = useQuery({ queryKey: ['organizations'], queryFn: listOrganizations })
 const manageableOrganizations = computed(() =>
@@ -404,6 +406,9 @@ function showMutationError(error: unknown): void {
         <p>在系统内完成独立签署、状态流转与审计留痕，无需手工填写审批 JSON。</p>
       </div>
       <div class="approval-heading-actions">
+        <el-button :icon="Stamp" @click="router.push({ name: 'document-audience-approvals' })"
+          >文档受众审批</el-button
+        >
         <el-tooltip content="刷新审批列表、成员资格和当前进度" placement="bottom">
           <el-button
             :icon="Refresh"

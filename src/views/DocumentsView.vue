@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import {
+  ArrowLeft,
   CircleCheck,
   CloseBold,
   Delete,
@@ -116,6 +117,8 @@ const creatingAudienceApproval = ref(false)
 const decidingApprovalId = ref('')
 const assigningApprovalId = ref('')
 const currentUserId = readSession()?.user.id ?? ''
+const approvalWorkspace = computed(() => route.name === 'document-audience-approvals')
+const openedApprovalDocumentId = ref('')
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
 const knowledgeBasesQuery = useQuery({
@@ -152,7 +155,7 @@ const documentsQuery = useQuery({
 const lifecycleSummaryQuery = useQuery({
   queryKey: computed(() => ['document-lifecycle-summary', selectedKnowledgeBaseId.value]),
   queryFn: () => documentsApi.getDocumentLifecycleSummary(selectedKnowledgeBaseId.value),
-  enabled: computed(() => Boolean(selectedKnowledgeBaseId.value)),
+  enabled: computed(() => Boolean(selectedKnowledgeBaseId.value) && !approvalWorkspace.value),
 })
 
 const audienceApprovalSummaryQuery = useQuery({
@@ -234,6 +237,34 @@ const filteredDocuments = computed(() => {
   })
 })
 
+watch(
+  () => [approvalWorkspace.value, route.query.documentId, documents.value] as const,
+  async ([isApprovalWorkspace, documentId]) => {
+    if (
+      !isApprovalWorkspace ||
+      typeof documentId !== 'string' ||
+      openedApprovalDocumentId.value === documentId
+    )
+      return
+    const item = documents.value.find((document) => document.id === documentId)
+    if (item) {
+      openedApprovalDocumentId.value = documentId
+      await openAudienceEvidence(item)
+      return
+    }
+    try {
+      openedApprovalDocumentId.value = documentId
+      await openAudienceEvidence(
+        await documentsApi.getDocument(selectedKnowledgeBaseId.value, documentId),
+      )
+    } catch (error) {
+      openedApprovalDocumentId.value = ''
+      ElMessage.error(getErrorMessage(error))
+    }
+  },
+  { immediate: true },
+)
+
 const selectedBusinessEvidence = computed(() =>
   businessEvidenceItems.value.find(
     (item) => item.id === audienceEvidenceForm.value.businessEvidenceId,
@@ -297,6 +328,16 @@ onBeforeUnmount(() => {
 function openUpload(): void {
   selectedFiles.value = []
   uploadDialogVisible.value = true
+}
+
+function openDocumentApprovalWorkspace(item?: KnowledgeDocument): void {
+  void router.push({
+    name: 'document-audience-approvals',
+    query: {
+      knowledgeBaseId: selectedKnowledgeBaseId.value,
+      ...(item ? { documentId: item.id } : {}),
+    },
+  })
 }
 
 function addFiles(files: File[]): void {
@@ -972,17 +1013,24 @@ function approvalUserName(user: { email: string; name: string | null } | null): 
   <div class="documents-page">
     <section class="documents-hero">
       <div>
-        <span class="eyebrow">DOCUMENT PIPELINE</span>
-        <h2>文档管理</h2>
-        <p>上传后自动完成解析、切片与向量化。支持 TXT、Markdown、PDF、Word 和 Excel。</p>
+        <span class="eyebrow">{{
+          approvalWorkspace ? 'DOCUMENT APPROVAL' : 'DOCUMENT PIPELINE'
+        }}</span>
+        <h2>{{ approvalWorkspace ? '文档受众审批' : '文档管理' }}</h2>
+        <p v-if="approvalWorkspace">集中创建业务证据、发起审批、处理待办并保存最终受众结论。</p>
+        <p v-else>上传后自动完成解析、切片与向量化。支持 TXT、Markdown、PDF、Word 和 Excel。</p>
       </div>
       <el-button
+        v-if="!approvalWorkspace"
         type="primary"
         :icon="UploadFilled"
         size="large"
         :disabled="!selectedKnowledgeBaseId"
         @click="openUpload"
         >上传文档</el-button
+      >
+      <el-button v-else :icon="ArrowLeft" @click="router.push({ name: 'knowledge-approvals' })"
+        >返回审批中心</el-button
       >
     </section>
 
@@ -1017,7 +1065,10 @@ function approvalUserName(user: { email: string; name: string | null } | null): 
     </el-empty>
 
     <template v-if="selectedKnowledgeBaseId">
-      <section v-if="lifecycleSummaryQuery.data.value" class="document-lifecycle-summary">
+      <section
+        v-if="!approvalWorkspace && lifecycleSummaryQuery.data.value"
+        class="document-lifecycle-summary"
+      >
         <div class="lifecycle-metric">
           <span>可检索</span><strong>{{ lifecycleSummaryQuery.data.value.ready }}</strong>
         </div>
@@ -1059,7 +1110,11 @@ function approvalUserName(user: { email: string; name: string | null } | null): 
           v-if="audienceApprovalSummaryQuery.data.value.actionable > 0"
           link
           type="primary"
-          @click="audienceApprovalTodoDrawerVisible = true"
+          @click="
+            approvalWorkspace
+              ? (audienceApprovalTodoDrawerVisible = true)
+              : openDocumentApprovalWorkspace()
+          "
           >查看待办</el-button
         >
       </section>
@@ -1196,6 +1251,7 @@ function approvalUserName(user: { email: string; name: string | null } | null): 
             <div class="document-row-actions">
               <el-button
                 v-if="
+                  !approvalWorkspace &&
                   item.status === 'READY' &&
                   item.embeddingStatus === 'READY' &&
                   item.lifecycleStatus === 'PUBLISHED'
@@ -1205,12 +1261,24 @@ function approvalUserName(user: { email: string; name: string | null } | null): 
                 @click="openCandidateGeneration(item)"
                 >生成评测题</el-button
               >
-              <el-button link :icon="EditPen" @click="openMetadata(item)">元数据</el-button>
-              <el-button link :icon="QuestionFilled" @click="openAudienceEvidence(item)"
-                >受众证据</el-button
+              <el-button v-if="!approvalWorkspace" link :icon="EditPen" @click="openMetadata(item)"
+                >元数据</el-button
               >
-              <el-button link :icon="Files" @click="openVersions(item)">版本</el-button>
-              <el-dropdown trigger="click"
+              <el-button
+                link
+                :type="approvalWorkspace ? 'primary' : undefined"
+                :icon="QuestionFilled"
+                @click="
+                  approvalWorkspace
+                    ? openAudienceEvidence(item)
+                    : openDocumentApprovalWorkspace(item)
+                "
+                >{{ approvalWorkspace ? '处理审批' : '前往审批' }}</el-button
+              >
+              <el-button v-if="!approvalWorkspace" link :icon="Files" @click="openVersions(item)"
+                >版本</el-button
+              >
+              <el-dropdown v-if="!approvalWorkspace" trigger="click"
                 ><el-button link>更多</el-button
                 ><template #dropdown
                   ><el-dropdown-menu
@@ -1423,7 +1491,7 @@ function approvalUserName(user: { email: string; name: string | null } | null): 
 
     <el-dialog
       v-model="audienceEvidenceDialogVisible"
-      title="填写文档受众证据"
+      title="文档受众审批工作台"
       width="min(650px, 92vw)"
     >
       <div v-if="activeDocument" class="metadata-document-head">

@@ -205,7 +205,17 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/KnowledgeApprovalsView.vue'),
         meta: {
           title: '知识审批',
-          description: '发起知识治理审批并完成独立签署、审计和凭证导出。',
+          description: '集中处理规则契约与单篇文档受众审批、待办、审计和凭证导出。',
+          capability: 'knowledge:manage',
+        },
+      },
+      {
+        path: 'approvals/documents',
+        name: 'document-audience-approvals',
+        component: () => import('@/views/DocumentAudienceApprovalsView.vue'),
+        meta: {
+          title: '文档受众审批',
+          description: '独立处理业务证据、文档审批、委托改派和受众结论。',
           capability: 'knowledge:manage',
         },
       },
