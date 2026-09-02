@@ -45,6 +45,7 @@ const selectedModelId = ref('')
 const conversationSearch = ref('')
 const recommendedQuestionSearch = ref('')
 const draft = ref('')
+const isComposing = ref(false)
 const evidenceDrawerVisible = ref(false)
 const selectedCitation = ref<Citation | null>(null)
 const feedbackByMessage = ref<Record<string, FeedbackRating>>({})
@@ -198,10 +199,25 @@ async function send(): Promise<void> {
 }
 
 function handleKeydown(event: Event | KeyboardEvent): void {
-  if (event instanceof KeyboardEvent && event.key === 'Enter' && !event.shiftKey) {
+  if (
+    event instanceof KeyboardEvent &&
+    event.key === 'Enter' &&
+    !event.shiftKey &&
+    !event.isComposing &&
+    !isComposing.value &&
+    event.keyCode !== 229
+  ) {
     event.preventDefault()
     void send()
   }
+}
+
+function handleCompositionStart(): void {
+  isComposing.value = true
+}
+
+function handleCompositionEnd(): void {
+  isComposing.value = false
 }
 
 async function copyText(value: string): Promise<void> {
@@ -637,6 +653,8 @@ function formatTime(value: string): string {
             :disabled="!selectedKnowledgeBaseId"
             placeholder="输入你想查询的问题，Enter 发送，Shift + Enter 换行"
             @keydown="handleKeydown"
+            @compositionstart="handleCompositionStart"
+            @compositionend="handleCompositionEnd"
           />
           <div>
             <span>回答由 AI 基于内部知识生成，请以引用原文为准</span>

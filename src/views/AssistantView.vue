@@ -85,6 +85,7 @@ const selectedKnowledgeBaseId = ref('')
 const selectedConversationId = ref('')
 const selectedModelId = ref('')
 const draft = ref('')
+const isComposing = ref(false)
 const isListening = ref(false)
 const microphoneAvailability = ref<MicrophoneAvailability>('checking')
 const conversationSearch = ref('')
@@ -253,10 +254,25 @@ async function send(): Promise<void> {
 }
 
 function handleComposerKeydown(event: Event | KeyboardEvent): void {
-  if (event instanceof KeyboardEvent && event.key === 'Enter' && !event.shiftKey) {
+  if (
+    event instanceof KeyboardEvent &&
+    event.key === 'Enter' &&
+    !event.shiftKey &&
+    !event.isComposing &&
+    !isComposing.value &&
+    event.keyCode !== 229
+  ) {
     event.preventDefault()
     void send()
   }
+}
+
+function handleCompositionStart(): void {
+  isComposing.value = true
+}
+
+function handleCompositionEnd(): void {
+  isComposing.value = false
 }
 
 function speechRecognitionErrorMessage(error: string): string {
@@ -909,6 +925,8 @@ function formatTime(value: string): string {
             placeholder="输入客户问题或需要查询的业务事项，Enter 发送，Shift + Enter 换行"
             :disabled="!selectedKnowledgeBaseId"
             @keydown="handleComposerKeydown"
+            @compositionstart="handleCompositionStart"
+            @compositionend="handleCompositionEnd"
           />
           <div>
             <span>AI 建议需结合实际业务判断后发送给客户</span>
