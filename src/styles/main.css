@@ -3123,6 +3123,79 @@ input {
   color: #7c899d;
   font-size: 10px;
 }
+.document-approval-todo-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 0;
+  color: #506078;
+  font-size: 11px;
+}
+.document-approval-todo-summary .el-button {
+  margin-left: auto;
+}
+.document-approval-todo-list {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.document-approval-todo-item {
+  padding: 13px 15px;
+  border: 1px solid #dfe5ee;
+  border-left: 3px solid #d59a32;
+  border-radius: 7px;
+  background: #fff;
+}
+.document-approval-todo-item.is-overdue {
+  border-left-color: #d84f4f;
+  background: #fffafa;
+}
+.document-approval-todo-head,
+.document-approval-todo-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.document-approval-todo-head > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+.document-approval-todo-head strong {
+  overflow: hidden;
+  color: #354158;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.document-approval-todo-head span,
+.document-approval-todo-actions small {
+  color: #8490a2;
+  font-size: 9px;
+}
+.document-approval-todo-item dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px 18px;
+  margin: 12px 0;
+}
+.document-approval-todo-item dl > div {
+  min-width: 0;
+}
+.document-approval-todo-item dt {
+  color: #8a95a6;
+  font-size: 9px;
+}
+.document-approval-todo-item dd {
+  overflow: hidden;
+  margin: 2px 0 0;
+  color: #4b586d;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .approval-inline-item {
   display: flex;
   width: 100%;
@@ -3168,6 +3241,9 @@ input {
   .approval-inline-item {
     align-items: stretch;
     flex-direction: column;
+  }
+  .document-approval-todo-item dl {
+    grid-template-columns: 1fr;
   }
   .audience-record-row > .el-button,
   .approval-inline-item > div:last-child {

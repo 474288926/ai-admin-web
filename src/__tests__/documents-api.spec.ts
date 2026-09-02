@@ -7,6 +7,8 @@ import {
   deleteDocument,
   listDocumentBatches,
   listDocuments,
+  getDocument,
+  getDocumentAudienceApprovalSummary,
   reindexDocument,
   retryDocumentBatch,
   retryDocumentJob,
@@ -93,6 +95,92 @@ describe('documents api', () => {
 
     const requestUrl = new URL(String(fetchMock.mock.calls[0]?.[0]), 'http://localhost')
     expect(requestUrl.searchParams.get('includeDrafts')).toBe('true')
+  })
+
+  it('loads one document and actionable approval todo details', async () => {
+    const fullDocument = {
+      id: documentId,
+      audienceEvidence: null,
+      ingestionJob: null,
+      ownerUserId: null,
+      versionSeriesId: '8ac53342-b1bd-486c-a8f7-c2eed7795994',
+      replacesDocumentId: null,
+      originalName: '运维手册.md',
+      mimeType: 'text/markdown',
+      sizeBytes: 100,
+      checksumSha256: 'a'.repeat(64),
+      status: 'READY',
+      embeddingStatus: 'READY',
+      lifecycleStatus: 'PUBLISHED',
+      accessMode: 'INHERIT',
+      sensitivityLevel: 'INTERNAL',
+      category: null,
+      businessDomain: null,
+      tags: [],
+      version: 2,
+      versionLabel: null,
+      effectiveAt: null,
+      expiresAt: null,
+      publishedAt: null,
+      pageCount: null,
+      characterCount: 20,
+      chunkCount: 1,
+      errorCode: null,
+      processingStartedAt: null,
+      processedAt: null,
+      embeddingStartedAt: null,
+      embeddedAt: null,
+      embeddingErrorCode: null,
+      embeddingInputTokens: null,
+      embeddingGeneratedChunkCount: 1,
+      embeddingReusedChunkCount: 0,
+      embeddingProviderInputCount: 1,
+      createdAt: '2026-09-01T01:00:00.000Z',
+      updatedAt: '2026-09-01T01:00:00.000Z',
+    }
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(fullDocument), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            pending: 2,
+            actionable: 1,
+            overdue: 1,
+            truncated: false,
+            items: [
+              {
+                approvalId: '51f6f782-590e-4029-84d4-c07662ee05c6',
+                reference: 'DBA-20260902-TEST0001',
+                documentId,
+                documentName: '运维手册.md',
+                documentVersion: 2,
+                businessEvidenceReference: 'DBE-20260902-TEST0001',
+                businessEvidenceTitle: '运维评审记录',
+                proposedAudienceTag: 'audience:internal-only',
+                businessOwner: '运维负责人',
+                createdByDisplayName: 'creator@example.com',
+                createdAt: '2026-09-01T01:00:00.000Z',
+                ageHours: 25,
+                overdue: true,
+              },
+            ],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const document = await getDocument(knowledgeBaseId, documentId)
+    const summary = await getDocumentAudienceApprovalSummary(knowledgeBaseId)
+
+    expect(document.originalName).toBe('运维手册.md')
+    expect(summary.items[0]).toMatchObject({ overdue: true, ageHours: 25 })
   })
 
   it('uploads files as multipart batch with an idempotency key', async () => {

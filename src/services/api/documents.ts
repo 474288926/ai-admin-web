@@ -3,6 +3,7 @@ import { z } from 'zod'
 import type {
   DocumentBatch,
   DocumentLifecycleSummary,
+  KnowledgeDocument,
   DocumentVersionList,
   DocumentAudienceEvidence,
   DocumentBusinessEvidence,
@@ -186,6 +187,16 @@ export async function listDocuments(
   return paginatedDocumentsSchema.parse(result)
 }
 
+export async function getDocument(
+  knowledgeBaseId: string,
+  documentId: string,
+): Promise<KnowledgeDocument> {
+  const result = await apiRequest<unknown>(
+    `/knowledge-bases/${knowledgeBaseId}/documents/${documentId}`,
+  )
+  return documentSchema.parse(result)
+}
+
 export async function uploadDocuments(
   knowledgeBaseId: string,
   files: File[],
@@ -342,6 +353,25 @@ const documentAudienceApprovalSchema = z.object({
 const documentAudienceApprovalSummarySchema = z.object({
   pending: z.number().int().nonnegative(),
   actionable: z.number().int().nonnegative(),
+  overdue: z.number().int().nonnegative(),
+  truncated: z.boolean(),
+  items: z.array(
+    z.object({
+      approvalId: z.uuid(),
+      reference: z.string(),
+      documentId: z.uuid(),
+      documentName: z.string(),
+      documentVersion: z.number().int().positive(),
+      businessEvidenceReference: z.string(),
+      businessEvidenceTitle: z.string(),
+      proposedAudienceTag: z.enum(['audience:customer-citable', 'audience:internal-only']),
+      businessOwner: z.string(),
+      createdByDisplayName: z.string(),
+      createdAt: z.iso.datetime(),
+      ageHours: z.number().int().nonnegative(),
+      overdue: z.boolean(),
+    }),
+  ),
 })
 
 export async function getDocumentAudienceEvidence(

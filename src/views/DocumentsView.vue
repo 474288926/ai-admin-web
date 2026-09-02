@@ -71,6 +71,7 @@ const fileInput = ref<HTMLInputElement>()
 const metadataDialogVisible = ref(false)
 const audienceEvidenceDialogVisible = ref(false)
 const businessEvidenceDialogVisible = ref(false)
+const audienceApprovalTodoDrawerVisible = ref(false)
 const businessEvidenceEditor = ref<HTMLElement>()
 const businessEvidenceFileInput = ref<HTMLInputElement>()
 const versionsDrawerVisible = ref(false)
@@ -151,6 +152,7 @@ const audienceApprovalSummaryQuery = useQuery({
   queryKey: computed(() => ['document-audience-approval-summary', selectedKnowledgeBaseId.value]),
   queryFn: () => documentsApi.getDocumentAudienceApprovalSummary(selectedKnowledgeBaseId.value),
   enabled: computed(() => Boolean(selectedKnowledgeBaseId.value)),
+  refetchInterval: 60_000,
 })
 
 const uploadMutation = useMutation({
@@ -417,6 +419,23 @@ async function openAudienceEvidence(item: KnowledgeDocument): Promise<void> {
   audienceEvidenceDialogVisible.value = true
 }
 
+async function openAudienceApprovalTodo(documentId: string): Promise<void> {
+  const currentPageDocument = documents.value.find((item) => item.id === documentId)
+  let targetDocument: KnowledgeDocument
+  if (currentPageDocument) {
+    targetDocument = currentPageDocument
+  } else {
+    try {
+      targetDocument = await documentsApi.getDocument(selectedKnowledgeBaseId.value, documentId)
+    } catch (error) {
+      ElMessage.error(getErrorMessage(error))
+      return
+    }
+  }
+  audienceApprovalTodoDrawerVisible.value = false
+  await openAudienceEvidence(targetDocument)
+}
+
 function openBusinessEvidenceCreate(): void {
   businessEvidenceForm.value = { title: '', detailsHtml: '' }
   businessEvidenceAttachments.value = []
@@ -582,6 +601,7 @@ async function createAudienceApproval(): Promise<void> {
     )
     audienceApprovalItems.value = [approval, ...audienceApprovalItems.value]
     audienceEvidenceForm.value.approvalId = ''
+    await audienceApprovalSummaryQuery.refetch()
     ElMessage.success(`审批单 ${approval.reference} 已创建，请由另一名成员审批`)
   } catch (error) {
     ElMessage.error(getErrorMessage(error))
@@ -619,6 +639,7 @@ async function decideAudienceApproval(
       approval.id === updated.id ? updated : approval,
     )
     if (decision === 'APPROVED') audienceEvidenceForm.value.approvalId = updated.id
+    await audienceApprovalSummaryQuery.refetch()
     ElMessage.success(decision === 'APPROVED' ? '文档审批单已批准' : '文档审批单已驳回')
   } catch (error) {
     if (error === 'cancel' || error === 'close') return
@@ -953,8 +974,8 @@ function formatDate(value: string): string {
           v-if="audienceApprovalSummaryQuery.data.value.actionable > 0"
           link
           type="primary"
-          @click="audienceFilter = 'UNCONFIRMED'"
-          >查看文档</el-button
+          @click="audienceApprovalTodoDrawerVisible = true"
+          >查看待办</el-button
         >
       </section>
       <section class="documents-toolbar">
@@ -1611,6 +1632,92 @@ function formatDate(value: string): string {
         >
       </template>
     </el-dialog>
+
+    <el-drawer
+      v-model="audienceApprovalTodoDrawerVisible"
+      title="我的文档审批待办"
+      size="min(720px, 96vw)"
+      class="document-approval-todo-drawer"
+    >
+      <el-alert
+        title="待办来自实时审批状态"
+        description="只显示当前账号有文档管理权限、且不是本人发起的待审批记录。等待满 24 小时会标记为超时，但不会自动批准或驳回。"
+        type="info"
+        show-icon
+        :closable="false"
+      />
+      <div class="document-approval-todo-summary">
+        <span>可处理 {{ audienceApprovalSummaryQuery.data.value?.actionable ?? 0 }} 条</span>
+        <el-tag v-if="audienceApprovalSummaryQuery.data.value?.overdue" type="danger" effect="plain"
+          >超时 {{ audienceApprovalSummaryQuery.data.value.overdue }} 条</el-tag
+        >
+        <el-button link :icon="Refresh" @click="audienceApprovalSummaryQuery.refetch()"
+          >刷新</el-button
+        >
+      </div>
+      <el-empty
+        v-if="!audienceApprovalSummaryQuery.data.value?.items.length"
+        description="当前没有可处理的文档审批待办"
+      />
+      <div v-else class="document-approval-todo-list">
+        <article
+          v-for="todo in audienceApprovalSummaryQuery.data.value.items"
+          :key="todo.approvalId"
+          class="document-approval-todo-item"
+          :class="{ 'is-overdue': todo.overdue }"
+        >
+          <div class="document-approval-todo-head">
+            <div>
+              <strong>{{ todo.documentName }}</strong>
+              <span>{{ todo.reference }} · V{{ todo.documentVersion }}</span>
+            </div>
+            <el-tag :type="todo.overdue ? 'danger' : 'warning'" effect="plain">
+              {{ todo.overdue ? `已等待 ${todo.ageHours} 小时` : `等待 ${todo.ageHours} 小时` }}
+            </el-tag>
+          </div>
+          <dl>
+            <div>
+              <dt>受众范围</dt>
+              <dd>
+                {{
+                  todo.proposedAudienceTag === 'audience:customer-citable'
+                    ? '客服可引用'
+                    : '仅内部使用'
+                }}
+              </dd>
+            </div>
+            <div>
+              <dt>业务负责人</dt>
+              <dd>{{ todo.businessOwner }}</dd>
+            </div>
+            <div>
+              <dt>业务证据</dt>
+              <dd>{{ todo.businessEvidenceReference }} · {{ todo.businessEvidenceTitle }}</dd>
+            </div>
+            <div>
+              <dt>发起人</dt>
+              <dd>{{ todo.createdByDisplayName }}</dd>
+            </div>
+          </dl>
+          <div class="document-approval-todo-actions">
+            <small>发起于 {{ formatDate(todo.createdAt) }}</small>
+            <el-button
+              type="primary"
+              size="small"
+              @click="openAudienceApprovalTodo(todo.documentId)"
+              >立即处理</el-button
+            >
+          </div>
+        </article>
+      </div>
+      <el-alert
+        v-if="audienceApprovalSummaryQuery.data.value?.truncated"
+        title="待办超过 50 条，当前只显示等待时间最长的 50 条"
+        type="warning"
+        show-icon
+        :closable="false"
+      />
+    </el-drawer>
 
     <el-drawer v-model="versionsDrawerVisible" title="文档版本" size="min(720px, 96vw)">
       <div class="version-drawer-head">

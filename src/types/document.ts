@@ -146,6 +146,25 @@ export interface DocumentAudienceApproval {
 export interface DocumentAudienceApprovalSummary {
   pending: number
   actionable: number
+  overdue: number
+  truncated: boolean
+  items: DocumentAudienceApprovalTodoItem[]
+}
+
+export interface DocumentAudienceApprovalTodoItem {
+  approvalId: string
+  reference: string
+  documentId: string
+  documentName: string
+  documentVersion: number
+  businessEvidenceReference: string
+  businessEvidenceTitle: string
+  proposedAudienceTag: DocumentAudienceEvidence['proposedAudienceTag']
+  businessOwner: string
+  createdByDisplayName: string
+  createdAt: string
+  ageHours: number
+  overdue: boolean
 }
 
 export type PaginatedDocuments = PaginatedResult<KnowledgeDocument>
