@@ -73,6 +73,8 @@ export interface DocumentAudienceEvidence {
   proposedAudienceTag: 'audience:customer-citable' | 'audience:internal-only'
   documentChecksumSha256: string
   documentVersion: number
+  businessEvidenceId: string | null
+  approvalId: string | null
   businessOwner: string
   businessEvidenceReference: string
   approvalReference: string
@@ -87,11 +89,45 @@ export interface DocumentAudienceEvidence {
 export interface UpsertDocumentAudienceEvidenceInput {
   proposedAudienceTag: DocumentAudienceEvidence['proposedAudienceTag']
   businessOwner: string
-  businessEvidenceReference: string
-  approvalReference: string
-  approvalAt: string
+  businessEvidenceId: string
+  approvalId: string
+  businessEvidenceReference?: string
+  approvalReference?: string
+  approvalAt?: string
   decision: DocumentAudienceEvidence['decision']
   comment?: string | null
+}
+
+export interface DocumentBusinessEvidence {
+  id: string
+  documentId: string
+  documentChecksumSha256: string
+  documentVersion: number
+  reference: string
+  title: string
+  details: string
+  createdByUserId: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface DocumentAudienceApproval {
+  id: string
+  reference: string
+  documentId: string
+  documentChecksumSha256: string
+  documentVersion: number
+  businessEvidenceId: string
+  businessEvidence: Pick<DocumentBusinessEvidence, 'id' | 'reference' | 'title'>
+  proposedAudienceTag: DocumentAudienceEvidence['proposedAudienceTag']
+  businessOwner: string
+  status: 'PENDING' | 'APPROVED' | 'REJECTED'
+  decisionComment: string | null
+  createdByUser: { id: string; email: string; name: string | null }
+  decidedByUser: { id: string; email: string; name: string | null } | null
+  decidedAt: string | null
+  createdAt: string
+  updatedAt: string
 }
 
 export type PaginatedDocuments = PaginatedResult<KnowledgeDocument>

@@ -40,6 +40,10 @@ const actionOptions = [
   { value: 'knowledge_base.grant_removed', label: '移除知识库授权' },
   { value: 'document.metadata_updated', label: '更新文档元数据' },
   { value: 'document.version_created', label: '创建文档版本' },
+  { value: 'document.business_evidence_created', label: '创建文档业务证据' },
+  { value: 'document.audience_approval_created', label: '发起文档受众审批' },
+  { value: 'document.audience_approval_decided', label: '决定文档受众审批' },
+  { value: 'document.audience_evidence_updated', label: '保存文档受众结论' },
   { value: 'knowledge_backlog.created', label: '创建知识缺口待办' },
   { value: 'knowledge_backlog.refreshed', label: '刷新知识缺口证据' },
   { value: 'knowledge_backlog.reopened', label: '重开知识缺口待办' },
@@ -270,6 +274,23 @@ function recordSummary(value: unknown): string {
     return `创建版本 V${String(changeValue(record, 'version') ?? '')}`.trim()
   }
   if (record.action === 'document.metadata_updated') return '文档受控元数据已更新'
+  if (record.action === 'document.business_evidence_created') {
+    return `业务证据编号：${String(changeValue(record, 'reference') ?? '-')}`
+  }
+  if (record.action === 'document.audience_approval_created') {
+    return `文档审批编号：${String(changeValue(record, 'reference') ?? '-')}`
+  }
+  if (record.action === 'document.audience_approval_decided') {
+    const decision = changeValue(record, 'decision') === 'APPROVED' ? '批准' : '驳回'
+    return `${decision}文档审批：${String(changeValue(record, 'reference') ?? '-')}`
+  }
+  if (record.action === 'document.audience_evidence_updated') {
+    const audience =
+      changeValue(record, 'proposedAudienceTag') === 'audience:customer-citable'
+        ? '客服可引用'
+        : '仅内部使用'
+    return `正式受众结论：${audience}`
+  }
   if (
     record.action === 'knowledge_backlog.created' ||
     record.action === 'knowledge_backlog.refreshed'

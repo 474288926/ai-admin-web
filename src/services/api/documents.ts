@@ -5,6 +5,8 @@ import type {
   DocumentLifecycleSummary,
   DocumentVersionList,
   DocumentAudienceEvidence,
+  DocumentBusinessEvidence,
+  DocumentAudienceApproval,
   UpsertDocumentAudienceEvidenceInput,
   PaginatedDocuments,
   UpdateDocumentMetadataInput,
@@ -36,6 +38,8 @@ export const documentSchema = z.object({
       proposedAudienceTag: z.enum(['audience:customer-citable', 'audience:internal-only']),
       documentChecksumSha256: z.string().length(64),
       documentVersion: z.number().int().positive(),
+      businessEvidenceId: z.uuid().nullable(),
+      approvalId: z.uuid().nullable(),
       businessOwner: z.string(),
       businessEvidenceReference: z.string(),
       approvalAt: z.iso.datetime(),
@@ -272,6 +276,8 @@ const documentAudienceEvidenceSchema = z.object({
   proposedAudienceTag: z.enum(['audience:customer-citable', 'audience:internal-only']),
   documentChecksumSha256: z.string().length(64),
   documentVersion: z.number().int().positive(),
+  businessEvidenceId: z.uuid().nullable(),
+  approvalId: z.uuid().nullable(),
   businessOwner: z.string(),
   businessEvidenceReference: z.string(),
   approvalReference: z.string(),
@@ -281,6 +287,14 @@ const documentAudienceEvidenceSchema = z.object({
   submittedByUserId: z.uuid(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
+})
+
+const documentBusinessEvidenceSchema = z.object({
+  id: z.uuid(), documentId: z.uuid(), documentChecksumSha256: z.string().length(64), documentVersion: z.number().int().positive(), reference: z.string(), title: z.string(), details: z.string(), createdByUserId: z.uuid(), createdAt: z.iso.datetime(), updatedAt: z.iso.datetime(),
+})
+
+const documentAudienceApprovalSchema = z.object({
+  id: z.uuid(), reference: z.string(), documentId: z.uuid(), documentChecksumSha256: z.string().length(64), documentVersion: z.number().int().positive(), businessEvidenceId: z.uuid(), businessEvidence: z.object({ id: z.uuid(), reference: z.string(), title: z.string() }), proposedAudienceTag: z.enum(['audience:customer-citable', 'audience:internal-only']), businessOwner: z.string(), status: z.enum(['PENDING', 'APPROVED', 'REJECTED']), decisionComment: z.string().nullable(), createdByUser: z.object({ id: z.uuid(), email: z.string(), name: z.string().nullable() }), decidedByUser: z.object({ id: z.uuid(), email: z.string(), name: z.string().nullable() }).nullable(), decidedAt: z.iso.datetime().nullable(), createdAt: z.iso.datetime(), updatedAt: z.iso.datetime(),
 })
 
 export async function getDocumentAudienceEvidence(
@@ -303,6 +317,31 @@ export async function upsertDocumentAudienceEvidence(
     { method: 'PUT', body: JSON.stringify(input) },
   )
   return documentAudienceEvidenceSchema.parse(result)
+}
+
+export async function listDocumentBusinessEvidence(knowledgeBaseId: string, documentId: string): Promise<DocumentBusinessEvidence[]> {
+  const result = await apiRequest<unknown>(`/knowledge-bases/${knowledgeBaseId}/documents/${documentId}/business-evidence`)
+  return z.array(documentBusinessEvidenceSchema).parse(result)
+}
+
+export async function createDocumentBusinessEvidence(knowledgeBaseId: string, documentId: string, input: { title: string; details: string }): Promise<DocumentBusinessEvidence> {
+  const result = await apiRequest<unknown>(`/knowledge-bases/${knowledgeBaseId}/documents/${documentId}/business-evidence`, { method: 'POST', body: JSON.stringify(input) })
+  return documentBusinessEvidenceSchema.parse(result)
+}
+
+export async function listDocumentAudienceApprovals(knowledgeBaseId: string, documentId: string): Promise<DocumentAudienceApproval[]> {
+  const result = await apiRequest<unknown>(`/knowledge-bases/${knowledgeBaseId}/documents/${documentId}/audience-approvals`)
+  return z.array(documentAudienceApprovalSchema).parse(result)
+}
+
+export async function createDocumentAudienceApproval(knowledgeBaseId: string, documentId: string, input: { businessEvidenceId: string; proposedAudienceTag: DocumentAudienceEvidence['proposedAudienceTag']; businessOwner: string }): Promise<DocumentAudienceApproval> {
+  const result = await apiRequest<unknown>(`/knowledge-bases/${knowledgeBaseId}/documents/${documentId}/audience-approvals`, { method: 'POST', body: JSON.stringify(input) })
+  return documentAudienceApprovalSchema.parse(result)
+}
+
+export async function decideDocumentAudienceApproval(knowledgeBaseId: string, documentId: string, approvalId: string, decision: 'APPROVED' | 'REJECTED', comment?: string): Promise<DocumentAudienceApproval> {
+  const result = await apiRequest<unknown>(`/knowledge-bases/${knowledgeBaseId}/documents/${documentId}/audience-approvals/${approvalId}/decision`, { method: 'POST', body: JSON.stringify({ decision, comment: comment || null }) })
+  return documentAudienceApprovalSchema.parse(result)
 }
 
 export async function listDocumentVersions(

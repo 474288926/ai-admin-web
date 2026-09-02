@@ -23,9 +23,12 @@ import { useRoute, useRouter } from 'vue-router'
 import * as documentsApi from '@/services/api/documents'
 import * as knowledgeBaseApi from '@/services/api/knowledge-bases'
 import { getErrorCodeMessage, getErrorMessage } from '@/services/error-feedback'
+import { readSession } from '@/services/session-storage'
 import type { KnowledgeDocument } from '@/types/document'
 import type {
   DocumentAudienceEvidence,
+  DocumentBusinessEvidence,
+  DocumentAudienceApproval,
   UpdateDocumentMetadataInput,
   UpsertDocumentAudienceEvidenceInput,
 } from '@/types/document'
@@ -58,6 +61,7 @@ const dragActive = ref(false)
 const fileInput = ref<HTMLInputElement>()
 const metadataDialogVisible = ref(false)
 const audienceEvidenceDialogVisible = ref(false)
+const businessEvidenceDialogVisible = ref(false)
 const versionsDrawerVisible = ref(false)
 const versionUploadVisible = ref(false)
 const activeDocument = ref<KnowledgeDocument | null>(null)
@@ -77,12 +81,21 @@ const metadataForm = ref({
 const audienceEvidenceForm = ref<UpsertDocumentAudienceEvidenceInput>({
   proposedAudienceTag: 'audience:internal-only',
   businessOwner: '',
+  businessEvidenceId: '',
+  approvalId: '',
   businessEvidenceReference: '',
   approvalReference: '',
   approvalAt: '',
   decision: 'APPROVED',
   comment: '',
 })
+const businessEvidenceItems = ref<DocumentBusinessEvidence[]>([])
+const audienceApprovalItems = ref<DocumentAudienceApproval[]>([])
+const businessEvidenceForm = ref({ title: '', details: '' })
+const creatingBusinessEvidence = ref(false)
+const creatingAudienceApproval = ref(false)
+const decidingApprovalId = ref('')
+const currentUserId = readSession()?.user.id ?? ''
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
 const knowledgeBasesQuery = useQuery({
@@ -189,6 +202,41 @@ const filteredDocuments = computed(() => {
     )
   })
 })
+
+const selectedBusinessEvidence = computed(() =>
+  businessEvidenceItems.value.find(
+    (item) => item.id === audienceEvidenceForm.value.businessEvidenceId,
+  ),
+)
+
+const compatibleApprovedAudienceApprovals = computed(() => {
+  const form = audienceEvidenceForm.value
+  const businessOwner = form.businessOwner.trim()
+  return audienceApprovalItems.value.filter(
+    (item) =>
+      item.status === 'APPROVED' &&
+      item.businessEvidenceId === form.businessEvidenceId &&
+      item.proposedAudienceTag === form.proposedAudienceTag &&
+      item.businessOwner === businessOwner,
+  )
+})
+
+watch(
+  () => [
+    audienceEvidenceForm.value.businessEvidenceId,
+    audienceEvidenceForm.value.proposedAudienceTag,
+    audienceEvidenceForm.value.businessOwner.trim(),
+  ],
+  () => {
+    const approvalId = audienceEvidenceForm.value.approvalId
+    if (
+      approvalId &&
+      !compatibleApprovedAudienceApprovals.value.some((item) => item.id === approvalId)
+    ) {
+      audienceEvidenceForm.value.approvalId = ''
+    }
+  },
+)
 
 const audienceCounts = computed(() => ({
   unconfirmed: documents.value.filter((item) => !item.audienceEvidence).length,
@@ -312,13 +360,21 @@ function openMetadata(item: KnowledgeDocument): void {
   metadataDialogVisible.value = true
 }
 
-function openAudienceEvidence(item: KnowledgeDocument): void {
+async function openAudienceEvidence(item: KnowledgeDocument): Promise<void> {
   activeDocument.value = item
+  const [businessEvidence, approvals] = await Promise.all([
+    documentsApi.listDocumentBusinessEvidence(selectedKnowledgeBaseId.value, item.id),
+    documentsApi.listDocumentAudienceApprovals(selectedKnowledgeBaseId.value, item.id),
+  ])
+  businessEvidenceItems.value = businessEvidence
+  audienceApprovalItems.value = approvals
   const evidence: DocumentAudienceEvidence | null = item.audienceEvidence
   audienceEvidenceForm.value = evidence
     ? {
         proposedAudienceTag: evidence.proposedAudienceTag,
         businessOwner: evidence.businessOwner,
+        businessEvidenceId: evidence.businessEvidenceId ?? '',
+        approvalId: evidence.approvalId ?? '',
         businessEvidenceReference: evidence.businessEvidenceReference,
         approvalReference: evidence.approvalReference,
         approvalAt: toLocalDateTime(evidence.approvalAt),
@@ -328,6 +384,8 @@ function openAudienceEvidence(item: KnowledgeDocument): void {
     : {
         proposedAudienceTag: 'audience:internal-only',
         businessOwner: '',
+        businessEvidenceId: '',
+        approvalId: '',
         businessEvidenceReference: '',
         approvalReference: '',
         approvalAt: toLocalDateTime(new Date().toISOString()),
@@ -337,23 +395,99 @@ function openAudienceEvidence(item: KnowledgeDocument): void {
   audienceEvidenceDialogVisible.value = true
 }
 
+function openBusinessEvidenceCreate(): void {
+  businessEvidenceForm.value = { title: '', details: '' }
+  businessEvidenceDialogVisible.value = true
+}
+
+async function createBusinessEvidence(): Promise<void> {
+  const item = activeDocument.value
+  const title = businessEvidenceForm.value.title.trim()
+  const details = businessEvidenceForm.value.details.trim()
+  if (!item || !title || !details) {
+    ElMessage.warning('请填写业务证据标题和详细内容')
+    return
+  }
+  creatingBusinessEvidence.value = true
+  try {
+    const evidence = await documentsApi.createDocumentBusinessEvidence(
+      selectedKnowledgeBaseId.value,
+      item.id,
+      { title, details },
+    )
+    businessEvidenceItems.value = [evidence, ...businessEvidenceItems.value]
+    audienceEvidenceForm.value.businessEvidenceId = evidence.id
+    businessEvidenceDialogVisible.value = false
+    ElMessage.success(`业务证据 ${evidence.reference} 已创建`)
+  } catch (error) {
+    ElMessage.error(getErrorMessage(error))
+  } finally {
+    creatingBusinessEvidence.value = false
+  }
+}
+
+async function createAudienceApproval(): Promise<void> {
+  const item = activeDocument.value
+  const evidenceId = audienceEvidenceForm.value.businessEvidenceId
+  if (!item || !evidenceId) { ElMessage.warning('请先选择业务证据'); return }
+  const businessOwner = audienceEvidenceForm.value.businessOwner.trim()
+  if (!businessOwner) { ElMessage.warning('请先填写业务内容负责人'); return }
+  creatingAudienceApproval.value = true
+  try {
+    const approval = await documentsApi.createDocumentAudienceApproval(
+      selectedKnowledgeBaseId.value,
+      item.id,
+      {
+        businessEvidenceId: evidenceId,
+        proposedAudienceTag: audienceEvidenceForm.value.proposedAudienceTag,
+        businessOwner,
+      },
+    )
+    audienceApprovalItems.value = [approval, ...audienceApprovalItems.value]
+    audienceEvidenceForm.value.approvalId = ''
+    ElMessage.success(`审批单 ${approval.reference} 已创建，请由另一名成员审批`)
+  } catch (error) {
+    ElMessage.error(getErrorMessage(error))
+  } finally {
+    creatingAudienceApproval.value = false
+  }
+}
+
+async function decideAudienceApproval(item: DocumentAudienceApproval, decision: 'APPROVED' | 'REJECTED'): Promise<void> {
+  const document = activeDocument.value
+  if (!document) return
+  try {
+    const result = await ElMessageBox.prompt(
+      decision === 'APPROVED' ? '可填写批准说明。' : '请填写驳回原因。',
+      decision === 'APPROVED' ? '批准文档审批单' : '驳回文档审批单',
+      { inputPlaceholder: decision === 'APPROVED' ? '例如：确认本版本仅供内部使用' : '填写需要补充或修改的内容', inputValidator: (value) => decision === 'APPROVED' || value.trim() ? true : '驳回原因不能为空' },
+    )
+    decidingApprovalId.value = item.id
+    const updated = await documentsApi.decideDocumentAudienceApproval(selectedKnowledgeBaseId.value, document.id, item.id, decision, result.value.trim())
+    audienceApprovalItems.value = audienceApprovalItems.value.map((approval) => approval.id === updated.id ? updated : approval)
+    if (decision === 'APPROVED') audienceEvidenceForm.value.approvalId = updated.id
+    ElMessage.success(decision === 'APPROVED' ? '文档审批单已批准' : '文档审批单已驳回')
+  } catch (error) {
+    if (error === 'cancel' || error === 'close') return
+    ElMessage.error(getErrorMessage(error))
+  } finally {
+    decidingApprovalId.value = ''
+  }
+}
+
 async function saveAudienceEvidence(): Promise<void> {
   const item = activeDocument.value
   if (!item) return
   const form = audienceEvidenceForm.value
-  if (!form.businessOwner.trim() || !form.businessEvidenceReference.trim() || !form.approvalReference.trim()) {
-    ElMessage.warning('请填写业务负责人、业务证据引用和审批引用')
+  if (!form.businessOwner.trim()) {
+    ElMessage.warning('请填写业务内容负责人')
     return
   }
-  const approvalAt = toIsoDateTime(form.approvalAt)
-  if (!approvalAt) {
-    ElMessage.warning('请填写审批时间')
-    return
-  }
+  if (!form.businessEvidenceId || !form.approvalId) { ElMessage.warning('请选择业务证据和已通过的文档审批单'); return }
   try {
     await audienceEvidenceMutation.mutateAsync({
       documentId: item.id,
-      input: { ...form, businessOwner: form.businessOwner.trim(), businessEvidenceReference: form.businessEvidenceReference.trim(), approvalReference: form.approvalReference.trim(), approvalAt, comment: form.comment?.trim() || null },
+      input: { ...form, businessOwner: form.businessOwner.trim(), comment: form.comment?.trim() || null },
     })
     audienceEvidenceDialogVisible.value = false
     ElMessage.success('文档受众证据已保存')
@@ -1004,20 +1138,35 @@ function formatDate(value: string): string {
         <el-form-item label="业务内容负责人" required>
           <el-input v-model="audienceEvidenceForm.businessOwner" maxlength="200" placeholder="填写实际业务负责人姓名或账号" />
         </el-form-item>
-        <el-form-item label="业务证据引用" required>
-          <el-input v-model="audienceEvidenceForm.businessEvidenceReference" maxlength="500" placeholder="例如：制度编号、会议纪要或受控资料编号" />
+        <el-form-item label="业务证据" required>
+          <div class="audience-record-row">
+            <el-select v-model="audienceEvidenceForm.businessEvidenceId" class="form-full-width" placeholder="选择系统中的业务证据">
+              <el-option v-for="item in businessEvidenceItems" :key="item.id" :label="`${item.reference} · ${item.title}`" :value="item.id" />
+            </el-select>
+            <el-button :icon="Plus" @click="openBusinessEvidenceCreate">新建</el-button>
+          </div>
+          <small class="form-help">业务证据用于说明为什么这份文档属于该受众范围，系统会自动带出证据编号。</small>
+          <div v-if="selectedBusinessEvidence" class="selected-record-detail">
+            <strong>{{ selectedBusinessEvidence.title }}</strong>
+            <span>{{ selectedBusinessEvidence.details }}</span>
+          </div>
         </el-form-item>
-        <el-form-item label="文档级审批记录" required>
-          <el-input v-model="audienceEvidenceForm.approvalReference" maxlength="500" placeholder="填写覆盖本份文档的真实审批记录编号" />
-        </el-form-item>
-        <el-form-item label="审批时间" required>
-          <el-date-picker v-model="audienceEvidenceForm.approvalAt" type="datetime" value-format="YYYY-MM-DDTHH:mm" class="form-full-width" />
-        </el-form-item>
-        <el-form-item label="决定" required>
-          <el-radio-group v-model="audienceEvidenceForm.decision">
-            <el-radio value="APPROVED">批准</el-radio>
-            <el-radio value="REJECTED">驳回</el-radio>
-          </el-radio-group>
+        <el-form-item label="文档级审批单" required>
+          <div class="audience-record-row">
+            <el-select v-model="audienceEvidenceForm.approvalId" class="form-full-width" placeholder="选择已通过的文档审批单">
+              <el-option v-for="item in compatibleApprovedAudienceApprovals" :key="item.id" :label="`${item.reference} · 已通过`" :value="item.id" />
+            </el-select>
+            <el-button :icon="Plus" :loading="creatingAudienceApproval" :disabled="!audienceEvidenceForm.businessEvidenceId || !audienceEvidenceForm.businessOwner.trim()" @click="createAudienceApproval">创建审批单</el-button>
+          </div>
+          <small class="form-help">审批单会冻结当前文档版本、业务证据、受众范围和负责人；发起人不能审批自己的审批单。</small>
+          <div v-for="item in audienceApprovalItems.filter((approval) => approval.status === 'PENDING')" :key="item.id" class="approval-inline-item">
+            <div>
+              <strong>{{ item.reference }} · 待审批</strong>
+              <span>{{ item.proposedAudienceTag === 'audience:customer-citable' ? '客服可引用' : '仅内部使用' }} · {{ item.businessOwner }}</span>
+            </div>
+            <div v-if="item.createdByUser.id !== currentUserId"><el-button size="small" type="success" :loading="decidingApprovalId === item.id" @click="decideAudienceApproval(item, 'APPROVED')">批准</el-button><el-button size="small" type="danger" plain :disabled="Boolean(decidingApprovalId)" @click="decideAudienceApproval(item, 'REJECTED')">驳回</el-button></div>
+            <el-tag v-else type="info" effect="plain">等待其他成员审批</el-tag>
+          </div>
         </el-form-item>
         <el-form-item label="补充说明">
           <el-input v-model="audienceEvidenceForm.comment" type="textarea" :rows="3" maxlength="1000" show-word-limit placeholder="可填写受众判断边界、例外或后续动作" />
@@ -1025,7 +1174,29 @@ function formatDate(value: string): string {
       </el-form>
       <template #footer>
         <el-button @click="audienceEvidenceDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="audienceEvidenceMutation.isPending.value" @click="saveAudienceEvidence">保存受众证据</el-button>
+        <el-button type="primary" :loading="audienceEvidenceMutation.isPending.value" :disabled="!audienceEvidenceForm.businessEvidenceId || !audienceEvidenceForm.approvalId" @click="saveAudienceEvidence">保存受众证据</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="businessEvidenceDialogVisible" title="新建业务证据" width="min(560px, 92vw)" append-to-body>
+      <el-alert
+        title="填写可核查的业务事实"
+        description="可引用制度、评审结论、会议决定或业务边界。系统会自动生成业务证据编号并绑定当前文档版本。"
+        type="info"
+        show-icon
+        :closable="false"
+      />
+      <el-form :model="businessEvidenceForm" label-position="top" class="business-evidence-form">
+        <el-form-item label="证据标题" required>
+          <el-input v-model="businessEvidenceForm.title" maxlength="200" show-word-limit placeholder="例如：AI Backend 运维手册评审结论" />
+        </el-form-item>
+        <el-form-item label="证据内容" required>
+          <el-input v-model="businessEvidenceForm.details" type="textarea" :rows="5" maxlength="2000" show-word-limit placeholder="例如：2026-09-02 运维评审确认，该手册包含内部网络、部署和排障信息，仅供企业内部运维成员使用。" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="businessEvidenceDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="creatingBusinessEvidence" :disabled="!businessEvidenceForm.title.trim() || !businessEvidenceForm.details.trim()" @click="createBusinessEvidence">创建并选中</el-button>
       </template>
     </el-dialog>
 
