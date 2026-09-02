@@ -9,7 +9,13 @@ export const organizationAuditResultSchema = z.object({
   items: z.array(
     z.object({
       id: z.uuid(),
-      entityType: z.enum(['ORGANIZATION', 'KNOWLEDGE_BASE', 'DOCUMENT', 'KNOWLEDGE_BACKLOG']),
+      entityType: z.enum([
+        'ORGANIZATION',
+        'KNOWLEDGE_BASE',
+        'DOCUMENT',
+        'KNOWLEDGE_BACKLOG',
+        'KNOWLEDGE_APPROVAL',
+      ]),
       entityId: z.uuid(),
       action: z.string().min(1),
       changes: z.record(z.string(), auditChangeValueSchema).nullable(),

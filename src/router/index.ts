@@ -200,6 +200,16 @@ const routes: RouteRecordRaw[] = [
         },
       },
       {
+        path: 'approvals',
+        name: 'knowledge-approvals',
+        component: () => import('@/views/KnowledgeApprovalsView.vue'),
+        meta: {
+          title: '知识审批',
+          description: '发起知识治理审批并完成独立签署、审计和凭证导出。',
+          capability: 'knowledge:manage',
+        },
+      },
+      {
         path: 'settings',
         name: 'settings',
         component: () => import('@/views/SettingsView.vue'),

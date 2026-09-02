@@ -45,6 +45,10 @@ const actionOptions = [
   { value: 'knowledge_backlog.reopened', label: '重开知识缺口待办' },
   { value: 'knowledge_backlog.updated', label: '更新知识缺口待办' },
   { value: 'knowledge_backlog.verification_started', label: '启动知识缺口验证' },
+  { value: 'knowledge_approval.created', label: '发起知识审批' },
+  { value: 'knowledge_approval.decision_recorded', label: '记录知识审批决定' },
+  { value: 'knowledge_approval.cancelled', label: '撤销知识审批' },
+  { value: 'knowledge_approval.invalidated', label: '知识审批快照失效' },
 ] as const
 
 const actionLabelByValue = new Map<string, string>(
@@ -167,6 +171,7 @@ function entityLabel(entityType: OrganizationAuditEntityType): string {
     KNOWLEDGE_BASE: '知识库',
     DOCUMENT: '文档',
     KNOWLEDGE_BACKLOG: '知识缺口待办',
+    KNOWLEDGE_APPROVAL: '知识审批',
   }[entityType]
 }
 
@@ -175,6 +180,7 @@ function entityTagType(
 ): 'primary' | 'success' | 'warning' | 'info' {
   if (entityType === 'KNOWLEDGE_BASE') return 'success'
   if (entityType === 'DOCUMENT') return 'warning'
+  if (entityType === 'KNOWLEDGE_APPROVAL') return 'primary'
   return entityType === 'KNOWLEDGE_BACKLOG' ? 'info' : 'primary'
 }
 
@@ -271,6 +277,15 @@ function recordSummary(value: unknown): string {
   }
   if (record.action === 'knowledge_backlog.reopened') return '问题复发，待办已恢复为待处理'
   if (record.action === 'knowledge_backlog.verification_started') return '已创建并关联完整验证运行'
+  if (record.action === 'knowledge_approval.created') {
+    return `审批编号：${String(changeValue(record, 'reference') ?? '-')}`
+  }
+  if (record.action === 'knowledge_approval.decision_recorded') {
+    const decision = changeValue(record, 'decision') === 'APPROVED' ? '批准' : '驳回'
+    return `${decision} ${String(changeValue(record, 'role') ?? '')}，审批状态：${String(changeValue(record, 'statusTo') ?? '')}`
+  }
+  if (record.action === 'knowledge_approval.cancelled') return '待处理审批已撤销'
+  if (record.action === 'knowledge_approval.invalidated') return '契约或知识范围变化，旧审批已失效'
   if (record.action === 'knowledge_backlog.updated') {
     const parts: string[] = []
     const statusTo = changeValue(record, 'statusTo')
@@ -338,6 +353,7 @@ function getErrorMessage(error: unknown): string {
             <el-option label="知识库" value="KNOWLEDGE_BASE" />
             <el-option label="文档" value="DOCUMENT" />
             <el-option label="知识缺口待办" value="KNOWLEDGE_BACKLOG" />
+            <el-option label="知识审批" value="KNOWLEDGE_APPROVAL" />
           </el-select>
         </el-form-item>
         <el-form-item label="操作类型">

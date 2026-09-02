@@ -3,6 +3,7 @@ export type OrganizationAuditEntityType =
   | 'KNOWLEDGE_BASE'
   | 'DOCUMENT'
   | 'KNOWLEDGE_BACKLOG'
+  | 'KNOWLEDGE_APPROVAL'
 export type OrganizationAuditChangeValue = string | number | boolean | null
 
 export interface OrganizationAuditActor {
