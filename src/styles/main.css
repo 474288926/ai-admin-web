@@ -3123,6 +3123,44 @@ input {
   color: #7c899d;
   font-size: 10px;
 }
+.document-approval-progress {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(96px, 1fr));
+  gap: 8px;
+  margin: 14px 0;
+}
+.document-approval-progress > div {
+  display: flex;
+  min-width: 0;
+  min-height: 58px;
+  padding: 10px 12px;
+  border: 1px solid #e1e6ed;
+  border-radius: 6px;
+  background: #fafbfd;
+  flex-direction: column;
+  justify-content: space-between;
+}
+.document-approval-progress span {
+  color: #758196;
+  font-size: 10px;
+}
+.document-approval-progress strong {
+  color: #39475c;
+  font-size: 19px;
+}
+.document-approval-progress .is-primary {
+  border-color: #cdddf5;
+  background: #f5f8fd;
+}
+.document-approval-progress .is-primary strong {
+  color: #2e5fbe;
+}
+.document-approval-progress .is-success strong {
+  color: #25835b;
+}
+.document-approval-progress .is-danger strong {
+  color: #c34d55;
+}
 .document-approval-todo-summary {
   display: flex;
   align-items: center;
@@ -3264,6 +3302,9 @@ input {
   }
   .document-approval-summary > small {
     grid-column: 1 / -1;
+  }
+  .document-approval-progress {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .audience-record-row,
   .approval-inline-item {

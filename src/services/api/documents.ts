@@ -10,6 +10,8 @@ import type {
   DocumentBusinessEvidenceAttachment,
   DocumentAudienceApproval,
   DocumentAudienceApprovalSummary,
+  DocumentAudienceApprovalQueue,
+  DocumentAudienceApprovalQueueStage,
   UpsertDocumentAudienceEvidenceInput,
   PaginatedDocuments,
   UpdateDocumentMetadataInput,
@@ -116,6 +118,35 @@ const documentLifecycleSummarySchema = z.object({
   expired: z.number().int().nonnegative(),
   expiringSoon: z.number().int().nonnegative(),
   withoutExpiry: z.number().int().nonnegative(),
+})
+
+const documentAudienceApprovalQueueStageSchema = z.enum([
+  'NOT_STARTED',
+  'PENDING',
+  'READY_TO_FINALIZE',
+  'COMPLETED',
+  'REJECTED',
+])
+
+const documentAudienceApprovalQueueSchema = z.object({
+  items: z.array(
+    z.object({
+      documentId: z.uuid(),
+      stage: documentAudienceApprovalQueueStageSchema,
+      latestApprovalReference: z.string().nullable(),
+      latestApprovalDueAt: nullableDateTime,
+      document: documentSchema,
+    }),
+  ),
+  counts: z.object({
+    total: z.number().int().nonnegative(),
+    notStarted: z.number().int().nonnegative(),
+    pending: z.number().int().nonnegative(),
+    readyToFinalize: z.number().int().nonnegative(),
+    completed: z.number().int().nonnegative(),
+    rejected: z.number().int().nonnegative(),
+  }),
+  meta: paginatedDocumentsSchema.shape.meta,
 })
 
 const documentReleasePreflightSchema = z.object({
@@ -508,6 +539,21 @@ export async function getDocumentAudienceApprovalSummary(
     `/knowledge-approvals/document-audience/knowledge-bases/${knowledgeBaseId}/summary`,
   )
   return documentAudienceApprovalSummarySchema.parse(result)
+}
+
+export async function listDocumentAudienceApprovalQueue(
+  knowledgeBaseId: string,
+  page: number,
+  pageSize: number,
+  options: { stage?: DocumentAudienceApprovalQueueStage | 'ALL'; search?: string } = {},
+): Promise<DocumentAudienceApprovalQueue> {
+  const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) })
+  if (options.stage && options.stage !== 'ALL') params.set('stage', options.stage)
+  if (options.search?.trim()) params.set('search', options.search.trim())
+  const result = await apiRequest<unknown>(
+    `/knowledge-approvals/document-audience/knowledge-bases/${knowledgeBaseId}/queue?${params}`,
+  )
+  return documentAudienceApprovalQueueSchema.parse(result)
 }
 
 export async function createDocumentAudienceApproval(

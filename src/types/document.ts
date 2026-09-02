@@ -178,6 +178,36 @@ export interface DocumentAudienceApprovalSummary {
   items: DocumentAudienceApprovalTodoItem[]
 }
 
+export type DocumentAudienceApprovalQueueStage =
+  | 'NOT_STARTED'
+  | 'PENDING'
+  | 'READY_TO_FINALIZE'
+  | 'COMPLETED'
+  | 'REJECTED'
+
+export interface DocumentAudienceApprovalQueueItem {
+  documentId: string
+  stage: DocumentAudienceApprovalQueueStage
+  latestApprovalReference: string | null
+  latestApprovalDueAt: string | null
+  document: KnowledgeDocument
+}
+
+export interface DocumentAudienceApprovalQueueCounts {
+  total: number
+  notStarted: number
+  pending: number
+  readyToFinalize: number
+  completed: number
+  rejected: number
+}
+
+export interface DocumentAudienceApprovalQueue {
+  items: DocumentAudienceApprovalQueueItem[]
+  counts: DocumentAudienceApprovalQueueCounts
+  meta: PaginatedResult<never>['meta']
+}
+
 export interface DocumentAudienceApprovalTodoItem {
   approvalId: string
   reference: string

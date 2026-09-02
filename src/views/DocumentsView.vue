@@ -34,6 +34,7 @@ import type {
   DocumentAudienceEvidence,
   DocumentBusinessEvidence,
   DocumentAudienceApproval,
+  DocumentAudienceApprovalQueueStage,
   UpdateDocumentMetadataInput,
   UpsertDocumentAudienceEvidenceInput,
 } from '@/types/document'
@@ -65,6 +66,7 @@ const selectedKnowledgeBaseId = ref('')
 const search = ref('')
 const statusFilter = ref<'ALL' | 'PROCESSING' | 'READY' | 'FAILED'>('ALL')
 const audienceFilter = ref<'ALL' | 'UNCONFIRMED' | 'APPROVED' | 'REJECTED'>('ALL')
+const approvalStageFilter = ref<DocumentAudienceApprovalQueueStage | 'ALL'>('ALL')
 const uploadDialogVisible = ref(false)
 const selectedFiles = ref<File[]>([])
 const dragActive = ref(false)
@@ -147,8 +149,37 @@ watch(selectedKnowledgeBaseId, async (id) => {
 })
 
 const documentsQuery = useQuery({
-  queryKey: computed(() => ['documents', selectedKnowledgeBaseId.value, page.value, PAGE_SIZE]),
-  queryFn: () => documentsApi.listDocuments(selectedKnowledgeBaseId.value, page.value, PAGE_SIZE),
+  queryKey: computed(() => [
+    'documents',
+    approvalWorkspace.value ? 'approval-queue' : 'management',
+    selectedKnowledgeBaseId.value,
+    page.value,
+    PAGE_SIZE,
+    approvalWorkspace.value ? approvalStageFilter.value : '',
+    approvalWorkspace.value ? search.value.trim() : '',
+  ]),
+  queryFn: async () => {
+    if (approvalWorkspace.value) {
+      const result = await documentsApi.listDocumentAudienceApprovalQueue(
+        selectedKnowledgeBaseId.value,
+        page.value,
+        PAGE_SIZE,
+        { stage: approvalStageFilter.value, search: search.value },
+      )
+      return {
+        items: result.items.map((item) => item.document),
+        meta: result.meta,
+        approvalQueueItems: result.items,
+        approvalQueueCounts: result.counts,
+      }
+    }
+    const result = await documentsApi.listDocuments(
+      selectedKnowledgeBaseId.value,
+      page.value,
+      PAGE_SIZE,
+    )
+    return { ...result, approvalQueueItems: [], approvalQueueCounts: null }
+  },
   enabled: computed(() => Boolean(selectedKnowledgeBaseId.value)),
 })
 
@@ -221,10 +252,16 @@ const currentKnowledgeBase = computed(() =>
 )
 const documents = computed(() => documentsQuery.data.value?.items ?? [])
 const meta = computed(() => documentsQuery.data.value?.meta)
+const approvalQueueItems = computed(() => documentsQuery.data.value?.approvalQueueItems ?? [])
+const approvalQueueCounts = computed(() => documentsQuery.data.value?.approvalQueueCounts)
+const approvalQueueByDocument = computed(
+  () => new Map(approvalQueueItems.value.map((item) => [item.documentId, item])),
+)
 const selectedTotalSize = computed(() =>
   selectedFiles.value.reduce((sum, file) => sum + file.size, 0),
 )
 const filteredDocuments = computed(() => {
+  if (approvalWorkspace.value) return documents.value
   const keyword = search.value.trim().toLocaleLowerCase()
   return documents.value.filter((item) => {
     const state = displayState(item).key
@@ -235,6 +272,10 @@ const filteredDocuments = computed(() => {
       (!keyword || item.originalName.toLocaleLowerCase().includes(keyword))
     )
   })
+})
+
+watch([approvalStageFilter, search], () => {
+  if (approvalWorkspace.value) page.value = 1
 })
 
 watch(
@@ -305,6 +346,41 @@ const audienceCounts = computed(() => ({
   approved: documents.value.filter((item) => item.audienceEvidence?.decision === 'APPROVED').length,
   rejected: documents.value.filter((item) => item.audienceEvidence?.decision === 'REJECTED').length,
 }))
+
+function approvalStageLabel(stage: DocumentAudienceApprovalQueueStage): string {
+  return {
+    NOT_STARTED: '未发起',
+    PENDING: '审批中',
+    READY_TO_FINALIZE: '待保存结论',
+    COMPLETED: '已完成',
+    REJECTED: '已驳回',
+  }[stage]
+}
+
+function approvalStageTagType(
+  stage: DocumentAudienceApprovalQueueStage,
+): 'primary' | 'success' | 'warning' | 'danger' | 'info' {
+  const types: Record<
+    DocumentAudienceApprovalQueueStage,
+    'primary' | 'success' | 'warning' | 'danger' | 'info'
+  > = {
+    NOT_STARTED: 'info',
+    PENDING: 'warning',
+    READY_TO_FINALIZE: 'primary',
+    COMPLETED: 'success',
+    REJECTED: 'danger',
+  }
+  return types[stage]
+}
+
+function approvalActionLabel(item: KnowledgeDocument): string {
+  const stage = approvalQueueByDocument.value.get(item.id)?.stage
+  if (stage === 'PENDING') return '查看审批'
+  if (stage === 'READY_TO_FINALIZE') return '保存结论'
+  if (stage === 'COMPLETED') return '查看结论'
+  if (stage === 'REJECTED') return '重新发起'
+  return '发起审批'
+}
 
 watch(
   () =>
@@ -664,7 +740,7 @@ async function createAudienceApproval(): Promise<void> {
     )
     audienceApprovalItems.value = [approval, ...audienceApprovalItems.value]
     audienceEvidenceForm.value.approvalId = ''
-    await audienceApprovalSummaryQuery.refetch()
+    await Promise.all([audienceApprovalSummaryQuery.refetch(), documentsQuery.refetch()])
     ElMessage.success(
       approval.assignedToUser
         ? `审批单 ${approval.reference} 已委托给 ${approvalUserName(approval.assignedToUser)}`
@@ -757,7 +833,7 @@ async function decideAudienceApproval(
       approval.id === updated.id ? updated : approval,
     )
     if (decision === 'APPROVED') audienceEvidenceForm.value.approvalId = updated.id
-    await audienceApprovalSummaryQuery.refetch()
+    await Promise.all([audienceApprovalSummaryQuery.refetch(), documentsQuery.refetch()])
     ElMessage.success(decision === 'APPROVED' ? '文档审批单已批准' : '文档审批单已驳回')
   } catch (error) {
     if (error === 'cancel' || error === 'close') return
@@ -1118,15 +1194,58 @@ function approvalUserName(user: { email: string; name: string | null } | null): 
           >查看待办</el-button
         >
       </section>
+      <section v-if="approvalWorkspace && approvalQueueCounts" class="document-approval-progress">
+        <div>
+          <span>范围内文档</span><strong>{{ approvalQueueCounts.total }}</strong>
+        </div>
+        <div>
+          <span>未发起</span><strong>{{ approvalQueueCounts.notStarted }}</strong>
+        </div>
+        <div>
+          <span>审批中</span><strong>{{ approvalQueueCounts.pending }}</strong>
+        </div>
+        <div class="is-primary">
+          <span>待保存结论</span><strong>{{ approvalQueueCounts.readyToFinalize }}</strong>
+        </div>
+        <div class="is-success">
+          <span>已完成</span><strong>{{ approvalQueueCounts.completed }}</strong>
+        </div>
+        <div class="is-danger">
+          <span>已驳回</span><strong>{{ approvalQueueCounts.rejected }}</strong>
+        </div>
+      </section>
       <section class="documents-toolbar">
         <div class="documents-search">
           <el-input
             v-model="search"
             :prefix-icon="Search"
             clearable
-            placeholder="搜索当前页文件名"
+            :placeholder="approvalWorkspace ? '搜索全部审批文档' : '搜索当前页文件名'"
           />
           <el-select
+            v-if="approvalWorkspace"
+            v-model="approvalStageFilter"
+            class="document-status-filter"
+            aria-label="审批阶段筛选"
+          >
+            <el-option label="全部审批阶段" value="ALL" />
+            <el-option
+              :label="`未发起 (${approvalQueueCounts?.notStarted ?? 0})`"
+              value="NOT_STARTED"
+            />
+            <el-option :label="`审批中 (${approvalQueueCounts?.pending ?? 0})`" value="PENDING" />
+            <el-option
+              :label="`待保存结论 (${approvalQueueCounts?.readyToFinalize ?? 0})`"
+              value="READY_TO_FINALIZE"
+            />
+            <el-option
+              :label="`已完成 (${approvalQueueCounts?.completed ?? 0})`"
+              value="COMPLETED"
+            />
+            <el-option :label="`已驳回 (${approvalQueueCounts?.rejected ?? 0})`" value="REJECTED" />
+          </el-select>
+          <el-select
+            v-if="!approvalWorkspace"
             v-model="statusFilter"
             class="document-status-filter"
             aria-label="处理状态筛选"
@@ -1137,6 +1256,7 @@ function approvalUserName(user: { email: string; name: string | null } | null): 
             /><el-option label="已就绪" value="READY" /><el-option label="失败" value="FAILED" />
           </el-select>
           <el-select
+            v-if="!approvalWorkspace"
             v-model="audienceFilter"
             class="document-status-filter"
             aria-label="受众证据筛选"
@@ -1221,6 +1341,14 @@ function approvalUserName(user: { email: string; name: string | null } | null): 
                     : '受众未确认'
                 }}
               </el-tag>
+              <el-tag
+                v-if="approvalWorkspace && approvalQueueByDocument.get(item.id)"
+                :type="approvalStageTagType(approvalQueueByDocument.get(item.id)!.stage)"
+                size="small"
+                effect="plain"
+              >
+                {{ approvalStageLabel(approvalQueueByDocument.get(item.id)!.stage) }}
+              </el-tag>
             </div>
             <div class="document-state">
               <el-tag :type="displayState(item).type" effect="light"
@@ -1273,7 +1401,7 @@ function approvalUserName(user: { email: string; name: string | null } | null): 
                     ? openAudienceEvidence(item)
                     : openDocumentApprovalWorkspace(item)
                 "
-                >{{ approvalWorkspace ? '处理审批' : '前往审批' }}</el-button
+                >{{ approvalWorkspace ? approvalActionLabel(item) : '前往审批' }}</el-button
               >
               <el-button v-if="!approvalWorkspace" link :icon="Files" @click="openVersions(item)"
                 >版本</el-button
