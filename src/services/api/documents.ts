@@ -7,6 +7,7 @@ import type {
   DocumentAudienceEvidence,
   DocumentBusinessEvidence,
   DocumentAudienceApproval,
+  DocumentAudienceApprovalSummary,
   UpsertDocumentAudienceEvidenceInput,
   PaginatedDocuments,
   UpdateDocumentMetadataInput,
@@ -297,6 +298,11 @@ const documentAudienceApprovalSchema = z.object({
   id: z.uuid(), reference: z.string(), documentId: z.uuid(), documentChecksumSha256: z.string().length(64), documentVersion: z.number().int().positive(), businessEvidenceId: z.uuid(), businessEvidence: z.object({ id: z.uuid(), reference: z.string(), title: z.string() }), proposedAudienceTag: z.enum(['audience:customer-citable', 'audience:internal-only']), businessOwner: z.string(), status: z.enum(['PENDING', 'APPROVED', 'REJECTED']), decisionComment: z.string().nullable(), createdByUser: z.object({ id: z.uuid(), email: z.string(), name: z.string().nullable() }), decidedByUser: z.object({ id: z.uuid(), email: z.string(), name: z.string().nullable() }).nullable(), decidedAt: z.iso.datetime().nullable(), createdAt: z.iso.datetime(), updatedAt: z.iso.datetime(),
 })
 
+const documentAudienceApprovalSummarySchema = z.object({
+  pending: z.number().int().nonnegative(),
+  actionable: z.number().int().nonnegative(),
+})
+
 export async function getDocumentAudienceEvidence(
   knowledgeBaseId: string,
   documentId: string,
@@ -332,6 +338,13 @@ export async function createDocumentBusinessEvidence(knowledgeBaseId: string, do
 export async function listDocumentAudienceApprovals(knowledgeBaseId: string, documentId: string): Promise<DocumentAudienceApproval[]> {
   const result = await apiRequest<unknown>(`/knowledge-bases/${knowledgeBaseId}/documents/${documentId}/audience-approvals`)
   return z.array(documentAudienceApprovalSchema).parse(result)
+}
+
+export async function getDocumentAudienceApprovalSummary(knowledgeBaseId: string): Promise<DocumentAudienceApprovalSummary> {
+  const result = await apiRequest<unknown>(
+    `/knowledge-bases/${knowledgeBaseId}/documents/audience-approval-summary`,
+  )
+  return documentAudienceApprovalSummarySchema.parse(result)
 }
 
 export async function createDocumentAudienceApproval(knowledgeBaseId: string, documentId: string, input: { businessEvidenceId: string; proposedAudienceTag: DocumentAudienceEvidence['proposedAudienceTag']; businessOwner: string }): Promise<DocumentAudienceApproval> {

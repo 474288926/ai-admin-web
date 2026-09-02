@@ -130,6 +130,11 @@ export interface DocumentAudienceApproval {
   updatedAt: string
 }
 
+export interface DocumentAudienceApprovalSummary {
+  pending: number
+  actionable: number
+}
+
 export type PaginatedDocuments = PaginatedResult<KnowledgeDocument>
 
 export interface DocumentLifecycleSummary {

@@ -14,6 +14,7 @@ import {
   QuestionFilled,
   Refresh,
   Search,
+  Tickets,
   UploadFilled,
   Warning,
 } from '@element-plus/icons-vue'
@@ -132,6 +133,12 @@ const documentsQuery = useQuery({
 const lifecycleSummaryQuery = useQuery({
   queryKey: computed(() => ['document-lifecycle-summary', selectedKnowledgeBaseId.value]),
   queryFn: () => documentsApi.getDocumentLifecycleSummary(selectedKnowledgeBaseId.value),
+  enabled: computed(() => Boolean(selectedKnowledgeBaseId.value)),
+})
+
+const audienceApprovalSummaryQuery = useQuery({
+  queryKey: computed(() => ['document-audience-approval-summary', selectedKnowledgeBaseId.value]),
+  queryFn: () => documentsApi.getDocumentAudienceApprovalSummary(selectedKnowledgeBaseId.value),
   enabled: computed(() => Boolean(selectedKnowledgeBaseId.value)),
 })
 
@@ -772,6 +779,20 @@ function formatDate(value: string): string {
           已发布 {{ lifecycleSummaryQuery.data.value.published }} 份 · 无预设期限
           {{ lifecycleSummaryQuery.data.value.withoutExpiry }} 份
         </div>
+      </section>
+      <section v-if="audienceApprovalSummaryQuery.data.value" class="document-approval-summary">
+        <div>
+          <el-icon><Tickets /></el-icon>
+          <span>文档受众审批待办</span>
+        </div>
+        <strong>{{ audienceApprovalSummaryQuery.data.value.actionable }}</strong>
+        <small>可由当前账号处理 · 共 {{ audienceApprovalSummaryQuery.data.value.pending }} 条待审批</small>
+        <el-button
+          v-if="audienceApprovalSummaryQuery.data.value.actionable > 0"
+          link
+          type="primary"
+          @click="audienceFilter = 'UNCONFIRMED'"
+        >查看文档</el-button>
       </section>
       <section class="documents-toolbar">
         <div class="documents-search">

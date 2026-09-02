@@ -3000,6 +3000,37 @@ input {
 .selected-record-detail strong {
   color: #34425a;
 }
+.document-approval-summary {
+  display: grid;
+  grid-template-columns: auto auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 0;
+  padding: 12px 15px;
+  border: 1px solid #dbe6f6;
+  border-radius: 8px;
+  color: #506078;
+  background: #f7faff;
+}
+.document-approval-summary > div {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #405a89;
+  font-size: 11px;
+  font-weight: 600;
+}
+.document-approval-summary > div .el-icon {
+  color: #4c75c9;
+}
+.document-approval-summary > strong {
+  color: #2e5fbe;
+  font-size: 18px;
+}
+.document-approval-summary > small {
+  color: #7c899d;
+  font-size: 10px;
+}
 .approval-inline-item {
   display: flex;
   width: 100%;
@@ -3035,6 +3066,12 @@ input {
 }
 
 @media (max-width: 640px) {
+  .document-approval-summary {
+    grid-template-columns: auto auto;
+  }
+  .document-approval-summary > small {
+    grid-column: 1 / -1;
+  }
   .audience-record-row,
   .approval-inline-item {
     align-items: stretch;
