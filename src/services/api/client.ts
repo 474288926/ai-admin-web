@@ -129,3 +129,27 @@ export async function apiRequest<T>(
 
   return (await response.json()) as T
 }
+
+export async function apiRequestBlob(
+  path: string,
+  init: RequestInit = {},
+  retryAfterRefresh = true,
+): Promise<Blob> {
+  const session = readSession()
+  const headers = new Headers(init.headers)
+  if (session?.accessToken) headers.set('Authorization', `Bearer ${session.accessToken}`)
+  const response = await fetchResponse(`${API_BASE_URL}${path}`, { ...init, headers })
+  if (response.status === 401 && retryAfterRefresh && session?.refreshToken) {
+    refreshPromise ??= refreshAccessToken().finally(() => {
+      refreshPromise = null
+    })
+    const token = await refreshPromise
+    if (token) return apiRequestBlob(path, init, false)
+  }
+  if (response.status === 401 && session) {
+    clearSession()
+    notifySessionExpired()
+  }
+  if (!response.ok) throw await parseError(response)
+  return response.blob()
+}

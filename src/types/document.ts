@@ -106,9 +106,22 @@ export interface DocumentBusinessEvidence {
   reference: string
   title: string
   details: string
+  detailsHtml: string
+  attachments: DocumentBusinessEvidenceAttachment[]
   createdByUserId: string
   createdAt: string
   updatedAt: string
+}
+
+export interface DocumentBusinessEvidenceAttachment {
+  id: string
+  evidenceId: string
+  originalName: string
+  mimeType: string
+  sizeBytes: number
+  checksumSha256: string
+  createdByUserId: string
+  createdAt: string
 }
 
 export interface DocumentAudienceApproval {

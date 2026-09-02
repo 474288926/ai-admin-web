@@ -8,6 +8,8 @@ import {
   Document as DocumentIcon,
   FolderOpened,
   MagicStick,
+  Link,
+  Picture,
   EditPen,
   Files,
   Plus,
@@ -16,6 +18,7 @@ import {
   Search,
   Tickets,
   UploadFilled,
+  VideoCamera,
   Warning,
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -47,6 +50,11 @@ const ACCEPTED_FILE_TYPES = [
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 ].join(',')
+const BUSINESS_EVIDENCE_ATTACHMENT_TYPES =
+  'image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime'
+const BUSINESS_EVIDENCE_ATTACHMENT_LIMIT = 5
+const BUSINESS_EVIDENCE_IMAGE_MAX_SIZE = 10 * 1024 * 1024
+const BUSINESS_EVIDENCE_VIDEO_MAX_SIZE = 100 * 1024 * 1024
 
 const route = useRoute()
 const router = useRouter()
@@ -63,6 +71,8 @@ const fileInput = ref<HTMLInputElement>()
 const metadataDialogVisible = ref(false)
 const audienceEvidenceDialogVisible = ref(false)
 const businessEvidenceDialogVisible = ref(false)
+const businessEvidenceEditor = ref<HTMLElement>()
+const businessEvidenceFileInput = ref<HTMLInputElement>()
 const versionsDrawerVisible = ref(false)
 const versionUploadVisible = ref(false)
 const activeDocument = ref<KnowledgeDocument | null>(null)
@@ -92,7 +102,8 @@ const audienceEvidenceForm = ref<UpsertDocumentAudienceEvidenceInput>({
 })
 const businessEvidenceItems = ref<DocumentBusinessEvidence[]>([])
 const audienceApprovalItems = ref<DocumentAudienceApproval[]>([])
-const businessEvidenceForm = ref({ title: '', details: '' })
+const businessEvidenceForm = ref({ title: '', detailsHtml: '' })
+const businessEvidenceAttachments = ref<File[]>([])
 const creatingBusinessEvidence = ref(false)
 const creatingAudienceApproval = ref(false)
 const decidingApprovalId = ref('')
@@ -158,7 +169,13 @@ const metadataMutation = useMutation({
 })
 
 const audienceEvidenceMutation = useMutation({
-  mutationFn: ({ documentId, input }: { documentId: string; input: UpsertDocumentAudienceEvidenceInput }) =>
+  mutationFn: ({
+    documentId,
+    input,
+  }: {
+    documentId: string
+    input: UpsertDocumentAudienceEvidenceInput
+  }) =>
     documentsApi.upsertDocumentAudienceEvidence(selectedKnowledgeBaseId.value, documentId, input),
 })
 
@@ -199,9 +216,7 @@ const filteredDocuments = computed(() => {
   const keyword = search.value.trim().toLocaleLowerCase()
   return documents.value.filter((item) => {
     const state = displayState(item).key
-    const audienceState = item.audienceEvidence
-      ? item.audienceEvidence.decision
-      : 'UNCONFIRMED'
+    const audienceState = item.audienceEvidence ? item.audienceEvidence.decision : 'UNCONFIRMED'
     return (
       (statusFilter.value === 'ALL' || state === statusFilter.value) &&
       (audienceFilter.value === 'ALL' || audienceState === audienceFilter.value) &&
@@ -403,14 +418,100 @@ async function openAudienceEvidence(item: KnowledgeDocument): Promise<void> {
 }
 
 function openBusinessEvidenceCreate(): void {
-  businessEvidenceForm.value = { title: '', details: '' }
+  businessEvidenceForm.value = { title: '', detailsHtml: '' }
+  businessEvidenceAttachments.value = []
   businessEvidenceDialogVisible.value = true
+}
+
+function updateBusinessEvidenceHtml(event: Event): void {
+  businessEvidenceForm.value.detailsHtml = (event.currentTarget as HTMLElement).innerHTML
+}
+
+function businessEvidencePlainText(html: string): string {
+  const element = document.createElement('div')
+  element.innerHTML = html
+  return (element.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 2000)
+}
+
+function applyBusinessEvidenceFormat(command: string, value?: string): void {
+  businessEvidenceEditor.value?.focus()
+  document.execCommand(command, false, value)
+  businessEvidenceForm.value.detailsHtml = businessEvidenceEditor.value?.innerHTML ?? ''
+}
+
+function addBusinessEvidenceLink(): void {
+  void ElMessageBox.prompt('填写以 http:// 或 https:// 开头的可核查地址。', '插入链接', {
+    inputPlaceholder: 'https://example.com/review-record',
+    inputValidator: (value) =>
+      /^https?:\/\//i.test(value.trim()) || '链接必须以 http:// 或 https:// 开头',
+  })
+    .then(({ value }) => applyBusinessEvidenceFormat('createLink', value.trim()))
+    .catch(() => undefined)
+}
+
+function handleBusinessEvidenceFiles(event: Event): void {
+  const input = event.target as HTMLInputElement
+  const next = [...businessEvidenceAttachments.value]
+  for (const file of Array.from(input.files ?? [])) {
+    const isVideo = file.type.startsWith('video/')
+    const maxSize = isVideo ? BUSINESS_EVIDENCE_VIDEO_MAX_SIZE : BUSINESS_EVIDENCE_IMAGE_MAX_SIZE
+    if (!BUSINESS_EVIDENCE_ATTACHMENT_TYPES.split(',').includes(file.type)) {
+      ElMessage.warning(`${file.name} 不是支持的图片或视频类型`)
+      continue
+    }
+    if (file.size > maxSize) {
+      ElMessage.warning(`${file.name} 超过${isVideo ? '视频 100 MB' : '图片 10 MB'}限制`)
+      continue
+    }
+    if (!next.some((item) => item.name === file.name && item.size === file.size)) next.push(file)
+  }
+  businessEvidenceAttachments.value = next.slice(0, BUSINESS_EVIDENCE_ATTACHMENT_LIMIT)
+  if (next.length > BUSINESS_EVIDENCE_ATTACHMENT_LIMIT)
+    ElMessage.warning(`每条业务证据最多 ${BUSINESS_EVIDENCE_ATTACHMENT_LIMIT} 个附件`)
+  input.value = ''
+}
+
+function removeBusinessEvidenceFile(index: number): void {
+  businessEvidenceAttachments.value.splice(index, 1)
+}
+
+async function openBusinessEvidenceAttachment(
+  evidence: DocumentBusinessEvidence,
+  attachmentId: string,
+): Promise<void> {
+  const item = activeDocument.value
+  if (!item) return
+  const previewWindow = window.open('', '_blank')
+  try {
+    const blob = await documentsApi.readDocumentBusinessEvidenceAttachment(
+      selectedKnowledgeBaseId.value,
+      item.id,
+      evidence.id,
+      attachmentId,
+    )
+    const url = URL.createObjectURL(blob)
+    if (previewWindow) {
+      previewWindow.opener = null
+      previewWindow.location.href = url
+    } else {
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.target = '_blank'
+      anchor.rel = 'noopener noreferrer'
+      anchor.click()
+    }
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  } catch (error) {
+    previewWindow?.close()
+    ElMessage.error(getErrorMessage(error))
+  }
 }
 
 async function createBusinessEvidence(): Promise<void> {
   const item = activeDocument.value
   const title = businessEvidenceForm.value.title.trim()
-  const details = businessEvidenceForm.value.details.trim()
+  const detailsHtml = businessEvidenceForm.value.detailsHtml.trim()
+  const details = businessEvidencePlainText(detailsHtml)
   if (!item || !title || !details) {
     ElMessage.warning('请填写业务证据标题和详细内容')
     return
@@ -420,12 +521,35 @@ async function createBusinessEvidence(): Promise<void> {
     const evidence = await documentsApi.createDocumentBusinessEvidence(
       selectedKnowledgeBaseId.value,
       item.id,
-      { title, details },
+      { title, details, detailsHtml },
     )
+    const uploadedAttachments = []
+    let failedAttachments = 0
+    for (const file of businessEvidenceAttachments.value) {
+      try {
+        uploadedAttachments.push(
+          await documentsApi.uploadDocumentBusinessEvidenceAttachment(
+            selectedKnowledgeBaseId.value,
+            item.id,
+            evidence.id,
+            file,
+          ),
+        )
+      } catch {
+        failedAttachments += 1
+      }
+    }
+    evidence.attachments = uploadedAttachments
     businessEvidenceItems.value = [evidence, ...businessEvidenceItems.value]
     audienceEvidenceForm.value.businessEvidenceId = evidence.id
     businessEvidenceDialogVisible.value = false
-    ElMessage.success(`业务证据 ${evidence.reference} 已创建`)
+    if (failedAttachments > 0) {
+      ElMessage.warning(
+        `业务证据 ${evidence.reference} 已创建，${failedAttachments} 个附件上传失败`,
+      )
+    } else {
+      ElMessage.success(`业务证据 ${evidence.reference} 已创建`)
+    }
   } catch (error) {
     ElMessage.error(getErrorMessage(error))
   } finally {
@@ -436,9 +560,15 @@ async function createBusinessEvidence(): Promise<void> {
 async function createAudienceApproval(): Promise<void> {
   const item = activeDocument.value
   const evidenceId = audienceEvidenceForm.value.businessEvidenceId
-  if (!item || !evidenceId) { ElMessage.warning('请先选择业务证据'); return }
+  if (!item || !evidenceId) {
+    ElMessage.warning('请先选择业务证据')
+    return
+  }
   const businessOwner = audienceEvidenceForm.value.businessOwner.trim()
-  if (!businessOwner) { ElMessage.warning('请先填写业务内容负责人'); return }
+  if (!businessOwner) {
+    ElMessage.warning('请先填写业务内容负责人')
+    return
+  }
   creatingAudienceApproval.value = true
   try {
     const approval = await documentsApi.createDocumentAudienceApproval(
@@ -460,18 +590,34 @@ async function createAudienceApproval(): Promise<void> {
   }
 }
 
-async function decideAudienceApproval(item: DocumentAudienceApproval, decision: 'APPROVED' | 'REJECTED'): Promise<void> {
+async function decideAudienceApproval(
+  item: DocumentAudienceApproval,
+  decision: 'APPROVED' | 'REJECTED',
+): Promise<void> {
   const document = activeDocument.value
   if (!document) return
   try {
     const result = await ElMessageBox.prompt(
       decision === 'APPROVED' ? '可填写批准说明。' : '请填写驳回原因。',
       decision === 'APPROVED' ? '批准文档审批单' : '驳回文档审批单',
-      { inputPlaceholder: decision === 'APPROVED' ? '例如：确认本版本仅供内部使用' : '填写需要补充或修改的内容', inputValidator: (value) => decision === 'APPROVED' || value.trim() ? true : '驳回原因不能为空' },
+      {
+        inputPlaceholder:
+          decision === 'APPROVED' ? '例如：确认本版本仅供内部使用' : '填写需要补充或修改的内容',
+        inputValidator: (value) =>
+          decision === 'APPROVED' || value.trim() ? true : '驳回原因不能为空',
+      },
     )
     decidingApprovalId.value = item.id
-    const updated = await documentsApi.decideDocumentAudienceApproval(selectedKnowledgeBaseId.value, document.id, item.id, decision, result.value.trim())
-    audienceApprovalItems.value = audienceApprovalItems.value.map((approval) => approval.id === updated.id ? updated : approval)
+    const updated = await documentsApi.decideDocumentAudienceApproval(
+      selectedKnowledgeBaseId.value,
+      document.id,
+      item.id,
+      decision,
+      result.value.trim(),
+    )
+    audienceApprovalItems.value = audienceApprovalItems.value.map((approval) =>
+      approval.id === updated.id ? updated : approval,
+    )
     if (decision === 'APPROVED') audienceEvidenceForm.value.approvalId = updated.id
     ElMessage.success(decision === 'APPROVED' ? '文档审批单已批准' : '文档审批单已驳回')
   } catch (error) {
@@ -490,11 +636,18 @@ async function saveAudienceEvidence(): Promise<void> {
     ElMessage.warning('请填写业务内容负责人')
     return
   }
-  if (!form.businessEvidenceId || !form.approvalId) { ElMessage.warning('请选择业务证据和已通过的文档审批单'); return }
+  if (!form.businessEvidenceId || !form.approvalId) {
+    ElMessage.warning('请选择业务证据和已通过的文档审批单')
+    return
+  }
   try {
     await audienceEvidenceMutation.mutateAsync({
       documentId: item.id,
-      input: { ...form, businessOwner: form.businessOwner.trim(), comment: form.comment?.trim() || null },
+      input: {
+        ...form,
+        businessOwner: form.businessOwner.trim(),
+        comment: form.comment?.trim() || null,
+      },
     })
     audienceEvidenceDialogVisible.value = false
     ElMessage.success('文档受众证据已保存')
@@ -613,15 +766,11 @@ async function activateVersion(version: KnowledgeDocument): Promise<void> {
     const message = blockers.length
       ? `预检发现：${blockers.join('；')}。仍要切换到 ${version.versionLabel || `V${version.version}`}？`
       : `确认切换到 ${version.versionLabel || `V${version.version}`}？当前版本将自动归档。`
-    await ElMessageBox.confirm(
-      message,
-      '切换文档版本',
-      {
-        confirmButtonText: blockers.length ? '仍然切换' : '确认切换',
-        cancelButtonText: '取消',
-        type: blockers.length ? 'warning' : 'info',
-      },
-    )
+    await ElMessageBox.confirm(message, '切换文档版本', {
+      confirmButtonText: blockers.length ? '仍然切换' : '确认切换',
+      cancelButtonText: '取消',
+      type: blockers.length ? 'warning' : 'info',
+    })
     await activateVersionMutation.mutateAsync({
       documentId: activeDocument.value.id,
       versionId: version.id,
@@ -766,13 +915,23 @@ function formatDate(value: string): string {
         <div class="lifecycle-metric">
           <span>可检索</span><strong>{{ lifecycleSummaryQuery.data.value.ready }}</strong>
         </div>
-        <div class="lifecycle-metric" :class="{ 'is-warning': lifecycleSummaryQuery.data.value.expiringSoon }">
-          <span>7 天内到期</span><strong>{{ lifecycleSummaryQuery.data.value.expiringSoon }}</strong>
+        <div
+          class="lifecycle-metric"
+          :class="{ 'is-warning': lifecycleSummaryQuery.data.value.expiringSoon }"
+        >
+          <span>7 天内到期</span
+          ><strong>{{ lifecycleSummaryQuery.data.value.expiringSoon }}</strong>
         </div>
-        <div class="lifecycle-metric" :class="{ 'is-danger': lifecycleSummaryQuery.data.value.expired }">
+        <div
+          class="lifecycle-metric"
+          :class="{ 'is-danger': lifecycleSummaryQuery.data.value.expired }"
+        >
           <span>已过期</span><strong>{{ lifecycleSummaryQuery.data.value.expired }}</strong>
         </div>
-        <div class="lifecycle-metric" :class="{ 'is-danger': lifecycleSummaryQuery.data.value.failed }">
+        <div
+          class="lifecycle-metric"
+          :class="{ 'is-danger': lifecycleSummaryQuery.data.value.failed }"
+        >
           <span>处理失败</span><strong>{{ lifecycleSummaryQuery.data.value.failed }}</strong>
         </div>
         <div class="lifecycle-summary-note">
@@ -786,13 +945,17 @@ function formatDate(value: string): string {
           <span>文档受众审批待办</span>
         </div>
         <strong>{{ audienceApprovalSummaryQuery.data.value.actionable }}</strong>
-        <small>可由当前账号处理 · 共 {{ audienceApprovalSummaryQuery.data.value.pending }} 条待审批</small>
+        <small
+          >可由当前账号处理 · 共
+          {{ audienceApprovalSummaryQuery.data.value.pending }} 条待审批</small
+        >
         <el-button
           v-if="audienceApprovalSummaryQuery.data.value.actionable > 0"
           link
           type="primary"
           @click="audienceFilter = 'UNCONFIRMED'"
-        >查看文档</el-button>
+          >查看文档</el-button
+        >
       </section>
       <section class="documents-toolbar">
         <div class="documents-search">
@@ -878,8 +1041,24 @@ function formatDate(value: string): string {
               <span>{{ item.category || '未分类' }}</span
               ><span v-if="item.chunkCount">{{ item.chunkCount }} 个切片</span
               ><span v-if="item.pageCount">{{ item.pageCount }} 页</span
-              ><el-tag :type="item.audienceEvidence ? (item.audienceEvidence.decision === 'APPROVED' ? 'success' : 'danger') : 'warning'" size="small" effect="light">
-                {{ item.audienceEvidence ? (item.audienceEvidence.proposedAudienceTag === 'audience:customer-citable' ? '客服可引用' : '仅内部') : '受众未确认' }}
+              ><el-tag
+                :type="
+                  item.audienceEvidence
+                    ? item.audienceEvidence.decision === 'APPROVED'
+                      ? 'success'
+                      : 'danger'
+                    : 'warning'
+                "
+                size="small"
+                effect="light"
+              >
+                {{
+                  item.audienceEvidence
+                    ? item.audienceEvidence.proposedAudienceTag === 'audience:customer-citable'
+                      ? '客服可引用'
+                      : '仅内部'
+                    : '受众未确认'
+                }}
               </el-tag>
             </div>
             <div class="document-state">
@@ -921,7 +1100,9 @@ function formatDate(value: string): string {
                 >生成评测题</el-button
               >
               <el-button link :icon="EditPen" @click="openMetadata(item)">元数据</el-button>
-              <el-button link :icon="QuestionFilled" @click="openAudienceEvidence(item)">受众证据</el-button>
+              <el-button link :icon="QuestionFilled" @click="openAudienceEvidence(item)"
+                >受众证据</el-button
+              >
               <el-button link :icon="Files" @click="openVersions(item)">版本</el-button>
               <el-dropdown trigger="click"
                 ><el-button link>更多</el-button
@@ -1134,12 +1315,19 @@ function formatDate(value: string): string {
       >
     </el-dialog>
 
-    <el-dialog v-model="audienceEvidenceDialogVisible" title="填写文档受众证据" width="min(650px, 92vw)">
+    <el-dialog
+      v-model="audienceEvidenceDialogVisible"
+      title="填写文档受众证据"
+      width="min(650px, 92vw)"
+    >
       <div v-if="activeDocument" class="metadata-document-head">
         <el-icon><DocumentIcon /></el-icon>
         <div>
           <strong>{{ activeDocument.originalName }}</strong>
-          <span>当前版本 V{{ activeDocument.version }} · SHA-256 {{ activeDocument.checksumSha256.slice(0, 12) }}…</span>
+          <span
+            >当前版本 V{{ activeDocument.version }} · SHA-256
+            {{ activeDocument.checksumSha256.slice(0, 12) }}…</span
+          >
         </div>
       </div>
       <el-alert
@@ -1157,67 +1345,270 @@ function formatDate(value: string): string {
           </el-radio-group>
         </el-form-item>
         <el-form-item label="业务内容负责人" required>
-          <el-input v-model="audienceEvidenceForm.businessOwner" maxlength="200" placeholder="填写实际业务负责人姓名或账号" />
+          <el-input
+            v-model="audienceEvidenceForm.businessOwner"
+            maxlength="200"
+            placeholder="填写实际业务负责人姓名或账号"
+          />
         </el-form-item>
         <el-form-item label="业务证据" required>
           <div class="audience-record-row">
-            <el-select v-model="audienceEvidenceForm.businessEvidenceId" class="form-full-width" placeholder="选择系统中的业务证据">
-              <el-option v-for="item in businessEvidenceItems" :key="item.id" :label="`${item.reference} · ${item.title}`" :value="item.id" />
+            <el-select
+              v-model="audienceEvidenceForm.businessEvidenceId"
+              class="form-full-width"
+              placeholder="选择系统中的业务证据"
+            >
+              <el-option
+                v-for="item in businessEvidenceItems"
+                :key="item.id"
+                :label="`${item.reference} · ${item.title}`"
+                :value="item.id"
+              />
             </el-select>
             <el-button :icon="Plus" @click="openBusinessEvidenceCreate">新建</el-button>
           </div>
-          <small class="form-help">业务证据用于说明为什么这份文档属于该受众范围，系统会自动带出证据编号。</small>
+          <small class="form-help"
+            >业务证据用于说明为什么这份文档属于该受众范围，系统会自动带出证据编号。</small
+          >
           <div v-if="selectedBusinessEvidence" class="selected-record-detail">
             <strong>{{ selectedBusinessEvidence.title }}</strong>
-            <span>{{ selectedBusinessEvidence.details }}</span>
+            <div
+              class="business-evidence-rich-preview"
+              v-html="selectedBusinessEvidence.detailsHtml"
+            ></div>
+            <div
+              v-if="selectedBusinessEvidence.attachments.length"
+              class="business-evidence-attachment-links"
+            >
+              <el-button
+                v-for="attachment in selectedBusinessEvidence.attachments"
+                :key="attachment.id"
+                link
+                type="primary"
+                :icon="attachment.mimeType.startsWith('video/') ? VideoCamera : Picture"
+                @click="openBusinessEvidenceAttachment(selectedBusinessEvidence, attachment.id)"
+                >{{ attachment.originalName }}</el-button
+              >
+            </div>
           </div>
         </el-form-item>
         <el-form-item label="文档级审批单" required>
           <div class="audience-record-row">
-            <el-select v-model="audienceEvidenceForm.approvalId" class="form-full-width" placeholder="选择已通过的文档审批单">
-              <el-option v-for="item in compatibleApprovedAudienceApprovals" :key="item.id" :label="`${item.reference} · 已通过`" :value="item.id" />
+            <el-select
+              v-model="audienceEvidenceForm.approvalId"
+              class="form-full-width"
+              placeholder="选择已通过的文档审批单"
+            >
+              <el-option
+                v-for="item in compatibleApprovedAudienceApprovals"
+                :key="item.id"
+                :label="`${item.reference} · 已通过`"
+                :value="item.id"
+              />
             </el-select>
-            <el-button :icon="Plus" :loading="creatingAudienceApproval" :disabled="!audienceEvidenceForm.businessEvidenceId || !audienceEvidenceForm.businessOwner.trim()" @click="createAudienceApproval">创建审批单</el-button>
+            <el-button
+              :icon="Plus"
+              :loading="creatingAudienceApproval"
+              :disabled="
+                !audienceEvidenceForm.businessEvidenceId ||
+                !audienceEvidenceForm.businessOwner.trim()
+              "
+              @click="createAudienceApproval"
+              >创建审批单</el-button
+            >
           </div>
-          <small class="form-help">审批单会冻结当前文档版本、业务证据、受众范围和负责人；发起人不能审批自己的审批单。</small>
-          <div v-for="item in audienceApprovalItems.filter((approval) => approval.status === 'PENDING')" :key="item.id" class="approval-inline-item">
+          <small class="form-help"
+            >审批单会冻结当前文档版本、业务证据、受众范围和负责人；发起人不能审批自己的审批单。</small
+          >
+          <div
+            v-for="item in audienceApprovalItems.filter(
+              (approval) => approval.status === 'PENDING',
+            )"
+            :key="item.id"
+            class="approval-inline-item"
+          >
             <div>
               <strong>{{ item.reference }} · 待审批</strong>
-              <span>{{ item.proposedAudienceTag === 'audience:customer-citable' ? '客服可引用' : '仅内部使用' }} · {{ item.businessOwner }}</span>
+              <span
+                >{{
+                  item.proposedAudienceTag === 'audience:customer-citable'
+                    ? '客服可引用'
+                    : '仅内部使用'
+                }}
+                · {{ item.businessOwner }}</span
+              >
             </div>
-            <div v-if="item.createdByUser.id !== currentUserId"><el-button size="small" type="success" :loading="decidingApprovalId === item.id" @click="decideAudienceApproval(item, 'APPROVED')">批准</el-button><el-button size="small" type="danger" plain :disabled="Boolean(decidingApprovalId)" @click="decideAudienceApproval(item, 'REJECTED')">驳回</el-button></div>
+            <div v-if="item.createdByUser.id !== currentUserId">
+              <el-button
+                size="small"
+                type="success"
+                :loading="decidingApprovalId === item.id"
+                @click="decideAudienceApproval(item, 'APPROVED')"
+                >批准</el-button
+              ><el-button
+                size="small"
+                type="danger"
+                plain
+                :disabled="Boolean(decidingApprovalId)"
+                @click="decideAudienceApproval(item, 'REJECTED')"
+                >驳回</el-button
+              >
+            </div>
             <el-tag v-else type="info" effect="plain">等待其他成员审批</el-tag>
           </div>
         </el-form-item>
         <el-form-item label="补充说明">
-          <el-input v-model="audienceEvidenceForm.comment" type="textarea" :rows="3" maxlength="1000" show-word-limit placeholder="可填写受众判断边界、例外或后续动作" />
+          <el-input
+            v-model="audienceEvidenceForm.comment"
+            type="textarea"
+            :rows="3"
+            maxlength="1000"
+            show-word-limit
+            placeholder="可填写受众判断边界、例外或后续动作"
+          />
         </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="audienceEvidenceDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="audienceEvidenceMutation.isPending.value" :disabled="!audienceEvidenceForm.businessEvidenceId || !audienceEvidenceForm.approvalId" @click="saveAudienceEvidence">保存受众证据</el-button>
+        <el-button
+          type="primary"
+          :loading="audienceEvidenceMutation.isPending.value"
+          :disabled="!audienceEvidenceForm.businessEvidenceId || !audienceEvidenceForm.approvalId"
+          @click="saveAudienceEvidence"
+          >保存受众证据</el-button
+        >
       </template>
     </el-dialog>
 
-    <el-dialog v-model="businessEvidenceDialogVisible" title="新建业务证据" width="min(560px, 92vw)" append-to-body>
+    <el-dialog
+      v-model="businessEvidenceDialogVisible"
+      title="新建业务证据"
+      width="min(680px, 94vw)"
+      append-to-body
+    >
       <el-alert
         title="填写可核查的业务事实"
-        description="可引用制度、评审结论、会议决定或业务边界。系统会自动生成业务证据编号并绑定当前文档版本。"
+        description="写明事实、时间、参与人和结论；图片或视频用于辅助核查，不能替代业务负责人和审批人的判断。"
         type="info"
         show-icon
         :closable="false"
       />
       <el-form :model="businessEvidenceForm" label-position="top" class="business-evidence-form">
         <el-form-item label="证据标题" required>
-          <el-input v-model="businessEvidenceForm.title" maxlength="200" show-word-limit placeholder="例如：AI Backend 运维手册评审结论" />
+          <el-input
+            v-model="businessEvidenceForm.title"
+            maxlength="200"
+            show-word-limit
+            placeholder="例如：AI Backend 运维手册评审结论"
+          />
         </el-form-item>
         <el-form-item label="证据内容" required>
-          <el-input v-model="businessEvidenceForm.details" type="textarea" :rows="5" maxlength="2000" show-word-limit placeholder="例如：2026-09-02 运维评审确认，该手册包含内部网络、部署和排障信息，仅供企业内部运维成员使用。" />
+          <div class="business-evidence-editor-shell">
+            <div class="business-evidence-toolbar" aria-label="富文本工具栏">
+              <el-tooltip content="加粗"
+                ><el-button text class="editor-command" @click="applyBusinessEvidenceFormat('bold')"
+                  ><strong>B</strong></el-button
+                ></el-tooltip
+              >
+              <el-tooltip content="斜体"
+                ><el-button
+                  text
+                  class="editor-command"
+                  @click="applyBusinessEvidenceFormat('italic')"
+                  ><em>I</em></el-button
+                ></el-tooltip
+              >
+              <el-tooltip content="下划线"
+                ><el-button
+                  text
+                  class="editor-command"
+                  @click="applyBusinessEvidenceFormat('underline')"
+                  ><u>U</u></el-button
+                ></el-tooltip
+              >
+              <el-tooltip content="无序列表"
+                ><el-button
+                  text
+                  class="editor-command"
+                  @click="applyBusinessEvidenceFormat('insertUnorderedList')"
+                  >• 列表</el-button
+                ></el-tooltip
+              >
+              <el-tooltip content="有序列表"
+                ><el-button
+                  text
+                  class="editor-command"
+                  @click="applyBusinessEvidenceFormat('insertOrderedList')"
+                  >1. 列表</el-button
+                ></el-tooltip
+              >
+              <el-tooltip content="插入外部核查链接"
+                ><el-button text :icon="Link" @click="addBusinessEvidenceLink"
+              /></el-tooltip>
+            </div>
+            <div
+              ref="businessEvidenceEditor"
+              class="business-evidence-editor"
+              contenteditable="true"
+              data-placeholder="例如：2026-09-02 运维评审确认，该手册包含内部网络、部署和排障信息，仅供企业内部运维成员使用。"
+              @input="updateBusinessEvidenceHtml"
+            ></div>
+          </div>
+          <small class="form-help"
+            >支持加粗、斜体、下划线、列表和外部链接；服务端会移除脚本、样式和嵌入内容。</small
+          >
+        </el-form-item>
+        <el-form-item label="图片或视频附件">
+          <input
+            ref="businessEvidenceFileInput"
+            type="file"
+            hidden
+            multiple
+            :accept="BUSINESS_EVIDENCE_ATTACHMENT_TYPES"
+            @change="handleBusinessEvidenceFiles"
+          />
+          <div class="business-evidence-upload-row">
+            <el-button
+              :icon="UploadFilled"
+              :disabled="businessEvidenceAttachments.length >= BUSINESS_EVIDENCE_ATTACHMENT_LIMIT"
+              @click="businessEvidenceFileInput?.click()"
+              >选择附件</el-button
+            >
+            <small>最多 5 个；图片每个 10 MB，视频每个 100 MB。禁止 SVG 和可执行文件。</small>
+          </div>
+          <div v-if="businessEvidenceAttachments.length" class="business-evidence-pending-files">
+            <div
+              v-for="(file, index) in businessEvidenceAttachments"
+              :key="`${file.name}-${file.size}`"
+            >
+              <el-icon
+                ><VideoCamera v-if="file.type.startsWith('video/')" /><Picture v-else
+              /></el-icon>
+              <span>{{ file.name }}</span>
+              <small>{{ formatBytes(file.size) }}</small>
+              <el-button
+                link
+                type="danger"
+                :icon="Delete"
+                aria-label="移除附件"
+                @click="removeBusinessEvidenceFile(index)"
+              />
+            </div>
+          </div>
         </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="businessEvidenceDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="creatingBusinessEvidence" :disabled="!businessEvidenceForm.title.trim() || !businessEvidenceForm.details.trim()" @click="createBusinessEvidence">创建并选中</el-button>
+        <el-button
+          type="primary"
+          :loading="creatingBusinessEvidence"
+          :disabled="
+            !businessEvidenceForm.title.trim() ||
+            !businessEvidencePlainText(businessEvidenceForm.detailsHtml)
+          "
+          @click="createBusinessEvidence"
+          >创建并选中</el-button
+        >
       </template>
     </el-dialog>
 

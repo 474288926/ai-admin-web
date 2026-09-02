@@ -6,13 +6,14 @@ import type {
   DocumentVersionList,
   DocumentAudienceEvidence,
   DocumentBusinessEvidence,
+  DocumentBusinessEvidenceAttachment,
   DocumentAudienceApproval,
   DocumentAudienceApprovalSummary,
   UpsertDocumentAudienceEvidenceInput,
   PaginatedDocuments,
   UpdateDocumentMetadataInput,
 } from '@/types/document'
-import { apiRequest, createClientRequestId } from './client'
+import { apiRequest, apiRequestBlob, createClientRequestId } from './client'
 
 const nullableDateTime = z.iso.datetime().nullable()
 export const ingestionJobSchema = z.object({
@@ -51,7 +52,8 @@ export const documentSchema = z.object({
       createdAt: z.iso.datetime(),
       updatedAt: z.iso.datetime(),
     })
-    .nullable(),
+    .nullable()
+    .default(null),
   ingestionJob: ingestionJobSchema.nullable(),
   ownerUserId: z.uuid().nullable(),
   versionSeriesId: z.uuid(),
@@ -290,12 +292,51 @@ const documentAudienceEvidenceSchema = z.object({
   updatedAt: z.iso.datetime(),
 })
 
+const documentBusinessEvidenceAttachmentSchema = z.object({
+  id: z.uuid(),
+  evidenceId: z.uuid(),
+  originalName: z.string(),
+  mimeType: z.string(),
+  sizeBytes: z.number().int().positive(),
+  checksumSha256: z.string().length(64),
+  createdByUserId: z.uuid(),
+  createdAt: z.iso.datetime(),
+})
+
 const documentBusinessEvidenceSchema = z.object({
-  id: z.uuid(), documentId: z.uuid(), documentChecksumSha256: z.string().length(64), documentVersion: z.number().int().positive(), reference: z.string(), title: z.string(), details: z.string(), createdByUserId: z.uuid(), createdAt: z.iso.datetime(), updatedAt: z.iso.datetime(),
+  id: z.uuid(),
+  documentId: z.uuid(),
+  documentChecksumSha256: z.string().length(64),
+  documentVersion: z.number().int().positive(),
+  reference: z.string(),
+  title: z.string(),
+  details: z.string(),
+  detailsHtml: z.string(),
+  attachments: z.array(documentBusinessEvidenceAttachmentSchema).default([]),
+  createdByUserId: z.uuid(),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
 })
 
 const documentAudienceApprovalSchema = z.object({
-  id: z.uuid(), reference: z.string(), documentId: z.uuid(), documentChecksumSha256: z.string().length(64), documentVersion: z.number().int().positive(), businessEvidenceId: z.uuid(), businessEvidence: z.object({ id: z.uuid(), reference: z.string(), title: z.string() }), proposedAudienceTag: z.enum(['audience:customer-citable', 'audience:internal-only']), businessOwner: z.string(), status: z.enum(['PENDING', 'APPROVED', 'REJECTED']), decisionComment: z.string().nullable(), createdByUser: z.object({ id: z.uuid(), email: z.string(), name: z.string().nullable() }), decidedByUser: z.object({ id: z.uuid(), email: z.string(), name: z.string().nullable() }).nullable(), decidedAt: z.iso.datetime().nullable(), createdAt: z.iso.datetime(), updatedAt: z.iso.datetime(),
+  id: z.uuid(),
+  reference: z.string(),
+  documentId: z.uuid(),
+  documentChecksumSha256: z.string().length(64),
+  documentVersion: z.number().int().positive(),
+  businessEvidenceId: z.uuid(),
+  businessEvidence: z.object({ id: z.uuid(), reference: z.string(), title: z.string() }),
+  proposedAudienceTag: z.enum(['audience:customer-citable', 'audience:internal-only']),
+  businessOwner: z.string(),
+  status: z.enum(['PENDING', 'APPROVED', 'REJECTED']),
+  decisionComment: z.string().nullable(),
+  createdByUser: z.object({ id: z.uuid(), email: z.string(), name: z.string().nullable() }),
+  decidedByUser: z
+    .object({ id: z.uuid(), email: z.string(), name: z.string().nullable() })
+    .nullable(),
+  decidedAt: z.iso.datetime().nullable(),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
 })
 
 const documentAudienceApprovalSummarySchema = z.object({
@@ -325,35 +366,100 @@ export async function upsertDocumentAudienceEvidence(
   return documentAudienceEvidenceSchema.parse(result)
 }
 
-export async function listDocumentBusinessEvidence(knowledgeBaseId: string, documentId: string): Promise<DocumentBusinessEvidence[]> {
-  const result = await apiRequest<unknown>(`/knowledge-bases/${knowledgeBaseId}/documents/${documentId}/business-evidence`)
+export async function listDocumentBusinessEvidence(
+  knowledgeBaseId: string,
+  documentId: string,
+): Promise<DocumentBusinessEvidence[]> {
+  const result = await apiRequest<unknown>(
+    `/knowledge-bases/${knowledgeBaseId}/documents/${documentId}/business-evidence`,
+  )
   return z.array(documentBusinessEvidenceSchema).parse(result)
 }
 
-export async function createDocumentBusinessEvidence(knowledgeBaseId: string, documentId: string, input: { title: string; details: string }): Promise<DocumentBusinessEvidence> {
-  const result = await apiRequest<unknown>(`/knowledge-bases/${knowledgeBaseId}/documents/${documentId}/business-evidence`, { method: 'POST', body: JSON.stringify(input) })
+export async function createDocumentBusinessEvidence(
+  knowledgeBaseId: string,
+  documentId: string,
+  input: { title: string; details: string; detailsHtml: string },
+): Promise<DocumentBusinessEvidence> {
+  const result = await apiRequest<unknown>(
+    `/knowledge-bases/${knowledgeBaseId}/documents/${documentId}/business-evidence`,
+    { method: 'POST', body: JSON.stringify(input) },
+  )
   return documentBusinessEvidenceSchema.parse(result)
 }
 
-export async function listDocumentAudienceApprovals(knowledgeBaseId: string, documentId: string): Promise<DocumentAudienceApproval[]> {
-  const result = await apiRequest<unknown>(`/knowledge-bases/${knowledgeBaseId}/documents/${documentId}/audience-approvals`)
+export async function uploadDocumentBusinessEvidenceAttachment(
+  knowledgeBaseId: string,
+  documentId: string,
+  evidenceId: string,
+  file: File,
+): Promise<DocumentBusinessEvidenceAttachment> {
+  const formData = new FormData()
+  formData.append('file', file)
+  const result = await apiRequest<unknown>(
+    `/knowledge-bases/${knowledgeBaseId}/documents/${documentId}/business-evidence/${evidenceId}/attachments`,
+    { method: 'POST', body: formData },
+  )
+  return documentBusinessEvidenceAttachmentSchema.parse(result)
+}
+
+export function readDocumentBusinessEvidenceAttachment(
+  knowledgeBaseId: string,
+  documentId: string,
+  evidenceId: string,
+  attachmentId: string,
+): Promise<Blob> {
+  return apiRequestBlob(
+    `/knowledge-bases/${knowledgeBaseId}/documents/${documentId}/business-evidence/${evidenceId}/attachments/${attachmentId}/content`,
+  )
+}
+
+export async function listDocumentAudienceApprovals(
+  knowledgeBaseId: string,
+  documentId: string,
+): Promise<DocumentAudienceApproval[]> {
+  const result = await apiRequest<unknown>(
+    `/knowledge-bases/${knowledgeBaseId}/documents/${documentId}/audience-approvals`,
+  )
   return z.array(documentAudienceApprovalSchema).parse(result)
 }
 
-export async function getDocumentAudienceApprovalSummary(knowledgeBaseId: string): Promise<DocumentAudienceApprovalSummary> {
+export async function getDocumentAudienceApprovalSummary(
+  knowledgeBaseId: string,
+): Promise<DocumentAudienceApprovalSummary> {
   const result = await apiRequest<unknown>(
     `/knowledge-bases/${knowledgeBaseId}/documents/audience-approval-summary`,
   )
   return documentAudienceApprovalSummarySchema.parse(result)
 }
 
-export async function createDocumentAudienceApproval(knowledgeBaseId: string, documentId: string, input: { businessEvidenceId: string; proposedAudienceTag: DocumentAudienceEvidence['proposedAudienceTag']; businessOwner: string }): Promise<DocumentAudienceApproval> {
-  const result = await apiRequest<unknown>(`/knowledge-bases/${knowledgeBaseId}/documents/${documentId}/audience-approvals`, { method: 'POST', body: JSON.stringify(input) })
+export async function createDocumentAudienceApproval(
+  knowledgeBaseId: string,
+  documentId: string,
+  input: {
+    businessEvidenceId: string
+    proposedAudienceTag: DocumentAudienceEvidence['proposedAudienceTag']
+    businessOwner: string
+  },
+): Promise<DocumentAudienceApproval> {
+  const result = await apiRequest<unknown>(
+    `/knowledge-bases/${knowledgeBaseId}/documents/${documentId}/audience-approvals`,
+    { method: 'POST', body: JSON.stringify(input) },
+  )
   return documentAudienceApprovalSchema.parse(result)
 }
 
-export async function decideDocumentAudienceApproval(knowledgeBaseId: string, documentId: string, approvalId: string, decision: 'APPROVED' | 'REJECTED', comment?: string): Promise<DocumentAudienceApproval> {
-  const result = await apiRequest<unknown>(`/knowledge-bases/${knowledgeBaseId}/documents/${documentId}/audience-approvals/${approvalId}/decision`, { method: 'POST', body: JSON.stringify({ decision, comment: comment || null }) })
+export async function decideDocumentAudienceApproval(
+  knowledgeBaseId: string,
+  documentId: string,
+  approvalId: string,
+  decision: 'APPROVED' | 'REJECTED',
+  comment?: string,
+): Promise<DocumentAudienceApproval> {
+  const result = await apiRequest<unknown>(
+    `/knowledge-bases/${knowledgeBaseId}/documents/${documentId}/audience-approvals/${approvalId}/decision`,
+    { method: 'POST', body: JSON.stringify({ decision, comment: comment || null }) },
+  )
   return documentAudienceApprovalSchema.parse(result)
 }
 
