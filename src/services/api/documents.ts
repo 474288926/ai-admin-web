@@ -4,6 +4,8 @@ import type {
   DocumentBatch,
   DocumentLifecycleSummary,
   DocumentVersionList,
+  DocumentAudienceEvidence,
+  UpsertDocumentAudienceEvidenceInput,
   PaginatedDocuments,
   UpdateDocumentMetadataInput,
 } from '@/types/document'
@@ -28,6 +30,23 @@ export const ingestionJobSchema = z.object({
 
 export const documentSchema = z.object({
   id: z.uuid(),
+  audienceEvidence: z
+    .object({
+      id: z.uuid(),
+      proposedAudienceTag: z.enum(['audience:customer-citable', 'audience:internal-only']),
+      documentChecksumSha256: z.string().length(64),
+      documentVersion: z.number().int().positive(),
+      businessOwner: z.string(),
+      businessEvidenceReference: z.string(),
+      approvalAt: z.iso.datetime(),
+      approvalReference: z.string(),
+      decision: z.enum(['APPROVED', 'REJECTED']),
+      comment: z.string().nullable(),
+      submittedByUserId: z.uuid(),
+      createdAt: z.iso.datetime(),
+      updatedAt: z.iso.datetime(),
+    })
+    .nullable(),
   ingestionJob: ingestionJobSchema.nullable(),
   ownerUserId: z.uuid().nullable(),
   versionSeriesId: z.uuid(),
@@ -245,6 +264,45 @@ export async function updateDocumentMetadata(
     `/knowledge-bases/${knowledgeBaseId}/documents/${documentId}/metadata`,
     { method: 'PATCH', body: JSON.stringify(input) },
   )
+}
+
+const documentAudienceEvidenceSchema = z.object({
+  id: z.uuid(),
+  documentId: z.uuid(),
+  proposedAudienceTag: z.enum(['audience:customer-citable', 'audience:internal-only']),
+  documentChecksumSha256: z.string().length(64),
+  documentVersion: z.number().int().positive(),
+  businessOwner: z.string(),
+  businessEvidenceReference: z.string(),
+  approvalReference: z.string(),
+  approvalAt: z.iso.datetime(),
+  decision: z.enum(['APPROVED', 'REJECTED']),
+  comment: z.string().nullable(),
+  submittedByUserId: z.uuid(),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+})
+
+export async function getDocumentAudienceEvidence(
+  knowledgeBaseId: string,
+  documentId: string,
+): Promise<DocumentAudienceEvidence | null> {
+  const result = await apiRequest<unknown>(
+    `/knowledge-bases/${knowledgeBaseId}/documents/${documentId}/audience-evidence`,
+  )
+  return result === null ? null : documentAudienceEvidenceSchema.parse(result)
+}
+
+export async function upsertDocumentAudienceEvidence(
+  knowledgeBaseId: string,
+  documentId: string,
+  input: UpsertDocumentAudienceEvidenceInput,
+): Promise<DocumentAudienceEvidence> {
+  const result = await apiRequest<unknown>(
+    `/knowledge-bases/${knowledgeBaseId}/documents/${documentId}/audience-evidence`,
+    { method: 'PUT', body: JSON.stringify(input) },
+  )
+  return documentAudienceEvidenceSchema.parse(result)
 }
 
 export async function listDocumentVersions(

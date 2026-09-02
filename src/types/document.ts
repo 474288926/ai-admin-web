@@ -29,6 +29,7 @@ export interface DocumentIngestionJob {
 
 export interface KnowledgeDocument {
   id: string
+  audienceEvidence: DocumentAudienceEvidence | null
   ingestionJob: DocumentIngestionJob | null
   ownerUserId: string | null
   versionSeriesId: string
@@ -65,6 +66,32 @@ export interface KnowledgeDocument {
   embeddingProviderInputCount: number
   createdAt: string
   updatedAt: string
+}
+
+export interface DocumentAudienceEvidence {
+  id: string
+  proposedAudienceTag: 'audience:customer-citable' | 'audience:internal-only'
+  documentChecksumSha256: string
+  documentVersion: number
+  businessOwner: string
+  businessEvidenceReference: string
+  approvalReference: string
+  approvalAt: string
+  decision: 'APPROVED' | 'REJECTED'
+  comment: string | null
+  submittedByUserId: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface UpsertDocumentAudienceEvidenceInput {
+  proposedAudienceTag: DocumentAudienceEvidence['proposedAudienceTag']
+  businessOwner: string
+  businessEvidenceReference: string
+  approvalReference: string
+  approvalAt: string
+  decision: DocumentAudienceEvidence['decision']
+  comment?: string | null
 }
 
 export type PaginatedDocuments = PaginatedResult<KnowledgeDocument>

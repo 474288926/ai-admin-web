@@ -24,7 +24,11 @@ import * as documentsApi from '@/services/api/documents'
 import * as knowledgeBaseApi from '@/services/api/knowledge-bases'
 import { getErrorCodeMessage, getErrorMessage } from '@/services/error-feedback'
 import type { KnowledgeDocument } from '@/types/document'
-import type { UpdateDocumentMetadataInput } from '@/types/document'
+import type {
+  DocumentAudienceEvidence,
+  UpdateDocumentMetadataInput,
+  UpsertDocumentAudienceEvidenceInput,
+} from '@/types/document'
 
 const PAGE_SIZE = 20
 const MAX_FILES = 20
@@ -52,6 +56,7 @@ const selectedFiles = ref<File[]>([])
 const dragActive = ref(false)
 const fileInput = ref<HTMLInputElement>()
 const metadataDialogVisible = ref(false)
+const audienceEvidenceDialogVisible = ref(false)
 const versionsDrawerVisible = ref(false)
 const versionUploadVisible = ref(false)
 const activeDocument = ref<KnowledgeDocument | null>(null)
@@ -67,6 +72,15 @@ const metadataForm = ref({
   versionLabel: '',
   effectiveAt: '',
   expiresAt: '',
+})
+const audienceEvidenceForm = ref<UpsertDocumentAudienceEvidenceInput>({
+  proposedAudienceTag: 'audience:internal-only',
+  businessOwner: '',
+  businessEvidenceReference: '',
+  approvalReference: '',
+  approvalAt: '',
+  decision: 'APPROVED',
+  comment: '',
 })
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
@@ -120,6 +134,11 @@ const deleteMutation = useMutation({
 const metadataMutation = useMutation({
   mutationFn: ({ documentId, input }: { documentId: string; input: UpdateDocumentMetadataInput }) =>
     documentsApi.updateDocumentMetadata(selectedKnowledgeBaseId.value, documentId, input),
+})
+
+const audienceEvidenceMutation = useMutation({
+  mutationFn: ({ documentId, input }: { documentId: string; input: UpsertDocumentAudienceEvidenceInput }) =>
+    documentsApi.upsertDocumentAudienceEvidence(selectedKnowledgeBaseId.value, documentId, input),
 })
 
 const versionsQuery = useQuery({
@@ -280,6 +299,57 @@ function openMetadata(item: KnowledgeDocument): void {
     expiresAt: toLocalDateTime(item.expiresAt),
   }
   metadataDialogVisible.value = true
+}
+
+function openAudienceEvidence(item: KnowledgeDocument): void {
+  activeDocument.value = item
+  const evidence: DocumentAudienceEvidence | null = item.audienceEvidence
+  audienceEvidenceForm.value = evidence
+    ? {
+        proposedAudienceTag: evidence.proposedAudienceTag,
+        businessOwner: evidence.businessOwner,
+        businessEvidenceReference: evidence.businessEvidenceReference,
+        approvalReference: evidence.approvalReference,
+        approvalAt: toLocalDateTime(evidence.approvalAt),
+        decision: evidence.decision,
+        comment: evidence.comment ?? '',
+      }
+    : {
+        proposedAudienceTag: 'audience:internal-only',
+        businessOwner: '',
+        businessEvidenceReference: '',
+        approvalReference: '',
+        approvalAt: toLocalDateTime(new Date().toISOString()),
+        decision: 'APPROVED',
+        comment: '',
+      }
+  audienceEvidenceDialogVisible.value = true
+}
+
+async function saveAudienceEvidence(): Promise<void> {
+  const item = activeDocument.value
+  if (!item) return
+  const form = audienceEvidenceForm.value
+  if (!form.businessOwner.trim() || !form.businessEvidenceReference.trim() || !form.approvalReference.trim()) {
+    ElMessage.warning('请填写业务负责人、业务证据引用和审批引用')
+    return
+  }
+  const approvalAt = toIsoDateTime(form.approvalAt)
+  if (!approvalAt) {
+    ElMessage.warning('请填写审批时间')
+    return
+  }
+  try {
+    await audienceEvidenceMutation.mutateAsync({
+      documentId: item.id,
+      input: { ...form, businessOwner: form.businessOwner.trim(), businessEvidenceReference: form.businessEvidenceReference.trim(), approvalReference: form.approvalReference.trim(), approvalAt, comment: form.comment?.trim() || null },
+    })
+    audienceEvidenceDialogVisible.value = false
+    ElMessage.success('文档受众证据已保存')
+    await queryClient.invalidateQueries({ queryKey: ['documents', selectedKnowledgeBaseId.value] })
+  } catch (error) {
+    ElMessage.error(getErrorMessage(error))
+  }
 }
 
 function openCandidateGeneration(item: KnowledgeDocument): void {
@@ -631,7 +701,10 @@ function formatDate(value: string): string {
             <div class="document-metadata">
               <span>{{ item.category || '未分类' }}</span
               ><span v-if="item.chunkCount">{{ item.chunkCount }} 个切片</span
-              ><span v-if="item.pageCount">{{ item.pageCount }} 页</span>
+              ><span v-if="item.pageCount">{{ item.pageCount }} 页</span
+              ><el-tag :type="item.audienceEvidence ? (item.audienceEvidence.decision === 'APPROVED' ? 'success' : 'danger') : 'warning'" size="small" effect="light">
+                {{ item.audienceEvidence ? (item.audienceEvidence.proposedAudienceTag === 'audience:customer-citable' ? '客服可引用' : '仅内部') : '受众未确认' }}
+              </el-tag>
             </div>
             <div class="document-state">
               <el-tag :type="displayState(item).type" effect="light"
@@ -672,6 +745,7 @@ function formatDate(value: string): string {
                 >生成评测题</el-button
               >
               <el-button link :icon="EditPen" @click="openMetadata(item)">元数据</el-button>
+              <el-button link :icon="QuestionFilled" @click="openAudienceEvidence(item)">受众证据</el-button>
               <el-button link :icon="Files" @click="openVersions(item)">版本</el-button>
               <el-dropdown trigger="click"
                 ><el-button link>更多</el-button
@@ -882,6 +956,56 @@ function formatDate(value: string): string {
           >保存元数据</el-button
         ></template
       >
+    </el-dialog>
+
+    <el-dialog v-model="audienceEvidenceDialogVisible" title="填写文档受众证据" width="min(650px, 92vw)">
+      <div v-if="activeDocument" class="metadata-document-head">
+        <el-icon><DocumentIcon /></el-icon>
+        <div>
+          <strong>{{ activeDocument.originalName }}</strong>
+          <span>当前版本 V{{ activeDocument.version }} · SHA-256 {{ activeDocument.checksumSha256.slice(0, 12) }}…</span>
+        </div>
+      </div>
+      <el-alert
+        title="系统内填写，不需要编辑 JSON"
+        description="受众判断会绑定当前文档版本并写入审计。保存后不会自动启用客服白名单，仍需完成全部文档预检和评测门禁。"
+        type="info"
+        show-icon
+        :closable="false"
+      />
+      <el-form :model="audienceEvidenceForm" label-position="top" class="audience-evidence-form">
+        <el-form-item label="受众范围" required>
+          <el-radio-group v-model="audienceEvidenceForm.proposedAudienceTag">
+            <el-radio value="audience:customer-citable">客服可引用</el-radio>
+            <el-radio value="audience:internal-only">仅内部使用</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="业务内容负责人" required>
+          <el-input v-model="audienceEvidenceForm.businessOwner" maxlength="200" placeholder="填写实际业务负责人姓名或账号" />
+        </el-form-item>
+        <el-form-item label="业务证据引用" required>
+          <el-input v-model="audienceEvidenceForm.businessEvidenceReference" maxlength="500" placeholder="例如：制度编号、会议纪要或受控资料编号" />
+        </el-form-item>
+        <el-form-item label="文档级审批记录" required>
+          <el-input v-model="audienceEvidenceForm.approvalReference" maxlength="500" placeholder="填写覆盖本份文档的真实审批记录编号" />
+        </el-form-item>
+        <el-form-item label="审批时间" required>
+          <el-date-picker v-model="audienceEvidenceForm.approvalAt" type="datetime" value-format="YYYY-MM-DDTHH:mm" class="form-full-width" />
+        </el-form-item>
+        <el-form-item label="决定" required>
+          <el-radio-group v-model="audienceEvidenceForm.decision">
+            <el-radio value="APPROVED">批准</el-radio>
+            <el-radio value="REJECTED">驳回</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="补充说明">
+          <el-input v-model="audienceEvidenceForm.comment" type="textarea" :rows="3" maxlength="1000" show-word-limit placeholder="可填写受众判断边界、例外或后续动作" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="audienceEvidenceDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="audienceEvidenceMutation.isPending.value" @click="saveAudienceEvidence">保存受众证据</el-button>
+      </template>
     </el-dialog>
 
     <el-drawer v-model="versionsDrawerVisible" title="文档版本" size="min(720px, 96vw)">
