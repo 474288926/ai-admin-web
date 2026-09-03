@@ -114,6 +114,9 @@ const approvalAssignmentTarget = ref<DocumentAudienceApproval | null>(null)
 const approvalAssignmentForm = ref({ assignedToUserId: '', dueAt: '', reason: '' })
 const preparationAssignmentDialogVisible = ref(false)
 const preparationAssignmentTarget = ref<KnowledgeDocument | null>(null)
+const selectedPreparationDocumentIds = ref<string[]>([])
+const batchPreparationAssignment = ref(false)
+const loadingBatchPreparationAssignees = ref(false)
 const preparationAssignmentForm = ref({ assignedToUserId: '', dueAt: '', reason: '' })
 const assigningPreparation = ref(false)
 const businessEvidenceForm = ref({ title: '', detailsHtml: '' })
@@ -277,9 +280,30 @@ const filteredDocuments = computed(() => {
     )
   })
 })
+const preparationSelectableDocuments = computed(() =>
+  filteredDocuments.value.filter((item) =>
+    ['NOT_STARTED', 'PREPARATION'].includes(
+      approvalQueueByDocument.value.get(item.id)?.stage ?? '',
+    ),
+  ),
+)
+const allPreparationSelectableSelected = computed(
+  () =>
+    preparationSelectableDocuments.value.length > 0 &&
+    preparationSelectableDocuments.value.every((item) =>
+      selectedPreparationDocumentIds.value.includes(item.id),
+    ),
+)
 
 watch([approvalStageFilter, search], () => {
-  if (approvalWorkspace.value) page.value = 1
+  if (approvalWorkspace.value) {
+    page.value = 1
+    selectedPreparationDocumentIds.value = []
+  }
+})
+
+watch([selectedKnowledgeBaseId, page], () => {
+  selectedPreparationDocumentIds.value = []
 })
 
 watch(
@@ -390,6 +414,7 @@ function approvalActionLabel(item: KnowledgeDocument): string {
 }
 
 async function openPreparationAssignment(item: KnowledgeDocument): Promise<void> {
+  batchPreparationAssignment.value = false
   preparationAssignmentTarget.value = item
   const queueItem = approvalQueueByDocument.value.get(item.id)
   const assignees = await documentsApi.listDocumentAudienceApprovalAssignees(
@@ -405,10 +430,76 @@ async function openPreparationAssignment(item: KnowledgeDocument): Promise<void>
   preparationAssignmentDialogVisible.value = true
 }
 
+function togglePreparationDocument(documentId: string, selected: boolean): void {
+  const next = new Set(selectedPreparationDocumentIds.value)
+  if (selected) next.add(documentId)
+  else next.delete(documentId)
+  selectedPreparationDocumentIds.value = [...next]
+}
+
+function toggleAllPreparationDocuments(selected: boolean): void {
+  selectedPreparationDocumentIds.value = selected
+    ? preparationSelectableDocuments.value.map((item) => item.id)
+    : []
+}
+
+async function openBatchPreparationAssignment(): Promise<void> {
+  const selected = preparationSelectableDocuments.value.filter((item) =>
+    selectedPreparationDocumentIds.value.includes(item.id),
+  )
+  if (!selected.length) return
+  loadingBatchPreparationAssignees.value = true
+  try {
+    const assigneeLists = await Promise.all(
+      selected.map((item) =>
+        documentsApi.listDocumentAudienceApprovalAssignees(selectedKnowledgeBaseId.value, item.id),
+      ),
+    )
+    const commonIds = assigneeLists
+      .slice(1)
+      .reduce(
+        (ids, users) => new Set([...ids].filter((id) => users.some((user) => user.id === id))),
+        new Set(assigneeLists[0]?.map((user) => user.id) ?? []),
+      )
+    audienceApprovalAssignees.value = (assigneeLists[0] ?? []).filter((user) =>
+      commonIds.has(user.id),
+    )
+    if (!audienceApprovalAssignees.value.length) {
+      ElMessage.warning('所选文档没有共同可用的资料准备负责人')
+      return
+    }
+    const preparations = selected
+      .map((item) => approvalQueueByDocument.value.get(item.id)?.preparation)
+      .filter((item) => item !== null && item !== undefined)
+    const sameAssigneeId = preparations.every(
+      (item) => item.assignedToUserId === preparations[0]?.assignedToUserId,
+    )
+      ? (preparations[0]?.assignedToUserId ?? '')
+      : ''
+    batchPreparationAssignment.value = true
+    preparationAssignmentTarget.value = null
+    preparationAssignmentForm.value = {
+      assignedToUserId: sameAssigneeId,
+      dueAt: defaultApprovalDueAt(),
+      reason: '收集业务证据、确认业务负责人并提出受众建议',
+    }
+    preparationAssignmentDialogVisible.value = true
+  } catch (error) {
+    ElMessage.error(getErrorMessage(error))
+  } finally {
+    loadingBatchPreparationAssignees.value = false
+  }
+}
+
 async function assignPreparation(): Promise<void> {
   const target = preparationAssignmentTarget.value
   const form = preparationAssignmentForm.value
-  if (!target || !form.assignedToUserId || !form.reason.trim()) return
+  if (
+    (!target && !batchPreparationAssignment.value) ||
+    !form.assignedToUserId ||
+    !form.reason.trim()
+  )
+    return
   const dueAt = new Date(form.dueAt)
   if (!form.dueAt || !Number.isFinite(dueAt.getTime()) || dueAt.getTime() <= Date.now()) {
     ElMessage.warning('资料准备期限必须晚于当前时间')
@@ -416,13 +507,31 @@ async function assignPreparation(): Promise<void> {
   }
   assigningPreparation.value = true
   try {
-    await documentsApi.assignDocumentAudiencePreparation(selectedKnowledgeBaseId.value, target.id, {
-      assignedToUserId: form.assignedToUserId,
-      dueAt: dueAt.toISOString(),
-      reason: form.reason.trim(),
-    })
+    if (batchPreparationAssignment.value) {
+      const result = await documentsApi.assignDocumentAudiencePreparationBatch(
+        selectedKnowledgeBaseId.value,
+        {
+          documentIds: selectedPreparationDocumentIds.value,
+          assignedToUserId: form.assignedToUserId,
+          dueAt: dueAt.toISOString(),
+          reason: form.reason.trim(),
+        },
+      )
+      ElMessage.success(`已分派 ${result.updatedCount} 份文档的资料准备任务`)
+      selectedPreparationDocumentIds.value = []
+    } else if (target) {
+      await documentsApi.assignDocumentAudiencePreparation(
+        selectedKnowledgeBaseId.value,
+        target.id,
+        {
+          assignedToUserId: form.assignedToUserId,
+          dueAt: dueAt.toISOString(),
+          reason: form.reason.trim(),
+        },
+      )
+      ElMessage.success('资料准备任务已分派')
+    }
     preparationAssignmentDialogVisible.value = false
-    ElMessage.success('资料准备任务已分派')
     await Promise.all([documentsQuery.refetch(), audienceApprovalSummaryQuery.refetch()])
   } catch (error) {
     ElMessage.error(getErrorMessage(error))
@@ -1331,6 +1440,25 @@ function approvalUserName(user: { email: string; name: string | null } | null): 
           </el-select>
         </div>
         <div class="toolbar-meta">
+          <template v-if="approvalWorkspace">
+            <el-checkbox
+              :model-value="allPreparationSelectableSelected"
+              :indeterminate="
+                selectedPreparationDocumentIds.length > 0 && !allPreparationSelectableSelected
+              "
+              :disabled="preparationSelectableDocuments.length === 0"
+              @change="toggleAllPreparationDocuments(Boolean($event))"
+              >选择当前页可分派文档</el-checkbox
+            >
+            <el-button
+              type="primary"
+              :icon="Tickets"
+              :loading="loadingBatchPreparationAssignees"
+              :disabled="selectedPreparationDocumentIds.length === 0"
+              @click="openBatchPreparationAssignment"
+              >批量分派 ({{ selectedPreparationDocumentIds.length }})</el-button
+            >
+          </template>
           <span>共 {{ meta?.total ?? 0 }} 份文档</span
           ><el-button
             :icon="Refresh"
@@ -1369,7 +1497,24 @@ function approvalUserName(user: { email: string; name: string | null } | null): 
           >
         </el-empty>
         <div v-else class="document-list">
-          <article v-for="item in filteredDocuments" :key="item.id" class="document-row">
+          <article
+            v-for="item in filteredDocuments"
+            :key="item.id"
+            class="document-row"
+            :class="{ 'has-preparation-selection': approvalWorkspace }"
+          >
+            <el-checkbox
+              v-if="approvalWorkspace"
+              class="document-preparation-checkbox"
+              :model-value="selectedPreparationDocumentIds.includes(item.id)"
+              :disabled="
+                !['NOT_STARTED', 'PREPARATION'].includes(
+                  approvalQueueByDocument.get(item.id)?.stage ?? '',
+                )
+              "
+              :aria-label="`选择 ${item.originalName}`"
+              @change="togglePreparationDocument(item.id, Boolean($event))"
+            />
             <div class="document-type">
               <el-icon><DocumentIcon /></el-icon><span>{{ fileKind(item) }}</span>
             </div>
@@ -2210,15 +2355,22 @@ function approvalUserName(user: { email: string; name: string | null } | null): 
     <el-dialog
       v-model="preparationAssignmentDialogVisible"
       :title="
-        approvalQueueByDocument.get(preparationAssignmentTarget?.id ?? '')?.stage === 'PREPARATION'
-          ? '改派资料准备'
-          : '分派资料准备'
+        batchPreparationAssignment
+          ? `批量分派资料准备（${selectedPreparationDocumentIds.length} 份）`
+          : approvalQueueByDocument.get(preparationAssignmentTarget?.id ?? '')?.stage ===
+              'PREPARATION'
+            ? '改派资料准备'
+            : '分派资料准备'
       "
       width="min(520px, 94vw)"
     >
       <el-alert
-        title="这不是审批决定"
-        description="准备负责人负责收集业务证据、确认业务内容负责人并提出受众建议。只有后续正式审批通过并保存结论后，文档才算治理完成。"
+        :title="batchPreparationAssignment ? '整批校验后一次提交' : '这不是审批决定'"
+        :description="
+          batchPreparationAssignment
+            ? '所选文档会统一使用同一负责人、期限和准备要求。任一文档不再符合条件时，整批都不会写入。'
+            : '准备负责人负责收集业务证据、确认业务内容负责人并提出受众建议。只有后续正式审批通过并保存结论后，文档才算治理完成。'
+        "
         type="info"
         show-icon
         :closable="false"

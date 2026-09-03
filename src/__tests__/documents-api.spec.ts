@@ -10,6 +10,7 @@ import {
   getDocument,
   getDocumentAudienceApprovalSummary,
   assignDocumentAudiencePreparation,
+  assignDocumentAudiencePreparationBatch,
   reindexDocument,
   retryDocumentBatch,
   retryDocumentJob,
@@ -256,6 +257,56 @@ describe('documents api', () => {
 
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain('/preparation/assignment')
     expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ method: 'POST' })
+  })
+
+  it('assigns document audience preparation in one batch request', async () => {
+    const secondDocumentId = '70cc8dba-16c7-4589-bac3-c58c42e37e52'
+    const preparation = {
+      id: '8f1f5613-21a3-483f-a513-b61603362d55',
+      documentId,
+      documentChecksumSha256: 'a'.repeat(64),
+      documentVersion: 2,
+      assignedToUserId: '550e8400-e29b-41d4-a716-446655440000',
+      assignedByUserId: '8bd95dfc-d44a-4837-995a-b2d95cc45663',
+      assignedToUser: {
+        id: '550e8400-e29b-41d4-a716-446655440000',
+        email: 'preparer@example.com',
+        name: '准备人',
+      },
+      assignedByUser: {
+        id: '8bd95dfc-d44a-4837-995a-b2d95cc45663',
+        email: 'admin@example.com',
+        name: '管理员',
+      },
+      dueAt: '2026-09-04T01:00:00.000Z',
+      reason: '批量收集业务证据',
+      completedAt: null,
+      completedByUserId: null,
+      createdAt: '2026-09-03T01:00:00.000Z',
+      updatedAt: '2026-09-03T01:00:00.000Z',
+    }
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ updatedCount: 2, items: [preparation, preparation] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await assignDocumentAudiencePreparationBatch(knowledgeBaseId, {
+      documentIds: [documentId, secondDocumentId],
+      assignedToUserId: preparation.assignedToUserId,
+      dueAt: preparation.dueAt,
+      reason: preparation.reason,
+    })
+
+    expect(result.updatedCount).toBe(2)
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain('/preparation/assignments')
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toMatchObject({
+      documentIds: [documentId, secondDocumentId],
+      assignedToUserId: preparation.assignedToUserId,
+      reason: '批量收集业务证据',
+    })
   })
 
   it('uploads files as multipart batch with an idempotency key', async () => {

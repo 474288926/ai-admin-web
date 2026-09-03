@@ -41,6 +41,7 @@ const actionOptions = [
   { value: 'document.metadata_updated', label: '更新文档元数据' },
   { value: 'document.version_created', label: '创建文档版本' },
   { value: 'document.business_evidence_created', label: '创建文档业务证据' },
+  { value: 'document.audience_preparation_assigned', label: '分派或改派资料准备' },
   { value: 'document.audience_approval_created', label: '发起文档受众审批' },
   { value: 'document.audience_approval_assigned', label: '委托或改派文档受众审批' },
   { value: 'document.audience_approval_decided', label: '决定文档受众审批' },

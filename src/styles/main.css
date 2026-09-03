@@ -2734,6 +2734,14 @@ input {
   padding: 12px 18px;
   border-bottom: 1px solid #edf0f5;
 }
+.document-row.has-preparation-selection {
+  grid-template-columns:
+    24px 52px minmax(220px, 1.5fr) minmax(140px, 0.8fr) minmax(130px, 0.65fr)
+    270px;
+}
+.document-preparation-checkbox {
+  justify-self: center;
+}
 .document-row-actions {
   display: flex;
   align-items: center;
@@ -6910,6 +6918,17 @@ input {
   }
   .document-row {
     grid-template-columns: 45px minmax(0, 1fr) auto;
+  }
+  .document-row.has-preparation-selection {
+    grid-template-columns: 24px 45px minmax(0, 1fr);
+  }
+  .document-row.has-preparation-selection .document-state,
+  .document-row.has-preparation-selection .document-row-actions {
+    grid-column: 3;
+  }
+  .document-row.has-preparation-selection .document-row-actions {
+    grid-row: auto;
+    align-items: flex-start;
   }
   .document-metadata {
     display: none;

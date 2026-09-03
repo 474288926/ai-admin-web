@@ -146,6 +146,11 @@ const documentAudiencePreparationSchema = z.object({
   updatedAt: z.iso.datetime(),
 })
 
+const batchAssignDocumentAudiencePreparationSchema = z.object({
+  updatedCount: z.number().int().positive(),
+  items: z.array(documentAudiencePreparationSchema),
+})
+
 const documentAudienceApprovalQueueSchema = z.object({
   items: z.array(
     z.object({
@@ -622,6 +627,22 @@ export async function assignDocumentAudiencePreparation(
     { method: 'POST', body: JSON.stringify(input) },
   )
   return documentAudiencePreparationSchema.parse(result)
+}
+
+export async function assignDocumentAudiencePreparationBatch(
+  knowledgeBaseId: string,
+  input: {
+    documentIds: string[]
+    assignedToUserId: string
+    dueAt: string
+    reason: string
+  },
+) {
+  const result = await apiRequest<unknown>(
+    `/knowledge-approvals/document-audience/knowledge-bases/${knowledgeBaseId}/preparation/assignments`,
+    { method: 'POST', body: JSON.stringify(input) },
+  )
+  return batchAssignDocumentAudiencePreparationSchema.parse(result)
 }
 
 export async function assignDocumentAudienceApproval(

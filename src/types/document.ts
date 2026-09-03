@@ -186,6 +186,11 @@ export interface DocumentAudiencePreparation {
   updatedAt: string
 }
 
+export interface BatchAssignDocumentAudiencePreparationResult {
+  updatedCount: number
+  items: DocumentAudiencePreparation[]
+}
+
 export interface DocumentAudienceApprovalSummary {
   preparationPending: number
   preparationActionable: number
