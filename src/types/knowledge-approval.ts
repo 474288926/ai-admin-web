@@ -12,6 +12,17 @@ export type KnowledgeApprovalRole =
 export type KnowledgeApprovalDecision = 'APPROVED' | 'REJECTED'
 export type ApprovalReportType = 'ALL' | 'DOCUMENT_AUDIENCE_CONTRACT' | 'DOCUMENT_AUDIENCE_APPROVAL'
 export type ApprovalReportStatus = KnowledgeApprovalStatus | 'ALL'
+export type ApprovalNotificationStatus =
+  | 'PENDING'
+  | 'PROCESSING'
+  | 'DELIVERED'
+  | 'FAILED'
+  | 'SKIPPED'
+export type ApprovalNotificationEventType =
+  | 'DOCUMENT_PREPARATION_ASSIGNED'
+  | 'DOCUMENT_APPROVAL_CREATED'
+  | 'DOCUMENT_APPROVAL_ASSIGNED'
+  | 'DOCUMENT_APPROVAL_DECIDED'
 
 export interface KnowledgeApprovalUser {
   id: string
@@ -143,4 +154,37 @@ export interface ApprovalComplianceReportSummary {
   byStatus: Record<KnowledgeApprovalStatus, number>
   generatedAt: string
   controls: { reportIsReadOnly: boolean }
+}
+
+export interface ApprovalNotification {
+  id: string
+  eventType: ApprovalNotificationEventType
+  status: ApprovalNotificationStatus
+  title: string
+  message: string
+  actionUrl: string
+  attempt: number
+  maxAttempts: number
+  nextAttemptAt: string
+  lastAttemptAt: string | null
+  deliveredAt: string | null
+  lastStatusCode: number | null
+  lastErrorCode: string | null
+  createdAt: string
+  updatedAt: string
+  recipientUser: KnowledgeApprovalUser
+  attempts: Array<{
+    id: string
+    attempt: number
+    trigger: 'AUTOMATIC' | 'MANUAL'
+    status: ApprovalNotificationStatus
+    statusCode: number | null
+    errorCode: string | null
+    attemptedAt: string
+  }>
+}
+
+export interface PaginatedApprovalNotifications {
+  items: ApprovalNotification[]
+  meta: PaginatedKnowledgeApprovals['meta']
 }

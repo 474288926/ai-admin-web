@@ -6,7 +6,9 @@ import {
   Close,
   DataAnalysis,
   Download,
+  Bell,
   InfoFilled,
+  Link,
   Plus,
   Refresh,
   Stamp,
@@ -21,6 +23,8 @@ import { listOrganizations } from '@/services/api/organizations'
 import type {
   ApprovalReportStatus,
   ApprovalReportType,
+  ApprovalNotification,
+  ApprovalNotificationStatus,
   KnowledgeApproval,
   KnowledgeApprovalDecision,
   KnowledgeApprovalRole,
@@ -35,6 +39,8 @@ const reportType = ref<ApprovalReportType>('ALL')
 const reportStatus = ref<ApprovalReportStatus>('ALL')
 const reportDateRange = ref<[Date, Date] | null>(null)
 const exportingReport = ref(false)
+const notificationStatus = ref<ApprovalNotificationStatus | ''>('')
+const notificationPage = ref(1)
 const page = ref(1)
 const drawerOpen = ref(false)
 const selectedApprovalId = ref('')
@@ -82,6 +88,9 @@ watch([selectedOrganizationId, selectedStatus], () => {
   drawerOpen.value = false
   selectedApprovalId.value = ''
 })
+watch([selectedOrganizationId, notificationStatus], () => {
+  notificationPage.value = 1
+})
 
 const approvalsQuery = useQuery({
   queryKey: computed(() => [
@@ -123,6 +132,22 @@ const complianceReportQuery = useQuery({
     }),
   enabled: computed(() => Boolean(selectedOrganizationId.value) && canViewComplianceReport.value),
 })
+const notificationsQuery = useQuery({
+  queryKey: computed(() => [
+    'approval-notifications',
+    selectedOrganizationId.value,
+    notificationStatus.value,
+    notificationPage.value,
+  ]),
+  queryFn: () =>
+    approvalApi.listApprovalNotifications({
+      organizationId: selectedOrganizationId.value,
+      status: notificationStatus.value || undefined,
+      page: notificationPage.value,
+      pageSize: PAGE_SIZE,
+    }),
+  enabled: computed(() => Boolean(selectedOrganizationId.value) && canViewComplianceReport.value),
+})
 const detailQuery = useQuery({
   queryKey: computed(() => ['knowledge-approval', selectedApprovalId.value]),
   queryFn: () => approvalApi.getKnowledgeApproval(selectedApprovalId.value),
@@ -135,6 +160,7 @@ const refreshQueries = async (): Promise<void> => {
     queryClient.invalidateQueries({ queryKey: ['knowledge-approval'] }),
     queryClient.invalidateQueries({ queryKey: ['knowledge-approval-capabilities'] }),
     queryClient.invalidateQueries({ queryKey: ['approval-compliance-report'] }),
+    queryClient.invalidateQueries({ queryKey: ['approval-notifications'] }),
   ])
 }
 const createMutation = useMutation({
@@ -216,10 +242,21 @@ const reissueMutation = useMutation({
   },
   onError: showMutationError,
 })
+const retryNotificationMutation = useMutation({
+  mutationFn: (notification: ApprovalNotification) =>
+    approvalApi.retryApprovalNotification(notification.id),
+  onSuccess: async () => {
+    ElMessage.success('通知已重新进入投递队列')
+    await queryClient.invalidateQueries({ queryKey: ['approval-notifications'] })
+  },
+  onError: (error) => ElMessage.error(errorMessage(error)),
+})
 
 const approvals = computed(() => approvalsQuery.data.value?.items ?? [])
 const meta = computed(() => approvalsQuery.data.value?.meta)
 const detail = computed(() => detailQuery.data.value)
+const notifications = computed(() => notificationsQuery.data.value?.items ?? [])
+const notificationMeta = computed(() => notificationsQuery.data.value?.meta)
 const impact = computed(() => detail.value?.impactSnapshot?.summary)
 const requiredRoles: KnowledgeApprovalRole[] = [
   'BUSINESS_OWNER',
@@ -366,6 +403,46 @@ function statusType(status: KnowledgeApprovalStatus): 'success' | 'warning' | 'd
   if (status === 'APPROVED') return 'success'
   if (status === 'PENDING') return 'warning'
   return status === 'REJECTED' ? 'danger' : 'info'
+}
+function notificationStatusLabel(status: ApprovalNotificationStatus): string {
+  return {
+    PENDING: '待投递',
+    PROCESSING: '投递中',
+    DELIVERED: '已送达',
+    FAILED: '投递失败',
+    SKIPPED: '已跳过',
+  }[status]
+}
+function notificationStatusType(
+  status: ApprovalNotificationStatus,
+): 'success' | 'warning' | 'danger' | 'info' {
+  if (status === 'DELIVERED') return 'success'
+  if (status === 'FAILED') return 'danger'
+  if (status === 'PENDING' || status === 'PROCESSING') return 'warning'
+  return 'info'
+}
+function notificationEventLabel(eventType: ApprovalNotification['eventType']): string {
+  return {
+    DOCUMENT_PREPARATION_ASSIGNED: '资料准备分派',
+    DOCUMENT_APPROVAL_CREATED: '审批创建',
+    DOCUMENT_APPROVAL_ASSIGNED: '审批改派',
+    DOCUMENT_APPROVAL_DECIDED: '审批决定',
+  }[eventType]
+}
+function notificationFailureLabel(code: string | null): string {
+  if (!code) return '-'
+  return (
+    {
+      CHANNEL_DISABLED: '外部通知渠道未启用',
+      TIMEOUT: '投递超时',
+      NETWORK_ERROR: '网络连接失败',
+      REMOTE_5XX: '通知服务暂时不可用',
+      REMOTE_REJECTED: '通知服务拒绝请求',
+    }[code] ?? code
+  )
+}
+function retryNotification(row: unknown): void {
+  retryNotificationMutation.mutate(row as ApprovalNotification)
 }
 function decisionLabel(decision: KnowledgeApprovalDecision | null): string {
   if (decision === 'APPROVED') return '已批准'
@@ -580,6 +657,183 @@ function showMutationError(error: unknown): void {
       <p class="compliance-note">
         导出文件不能回写审批状态，且不包含业务证据正文和附件，仅保留证据编号、标题与审批留痕。
       </p>
+    </section>
+
+    <section v-if="canViewComplianceReport" class="notification-report">
+      <header>
+        <div class="approval-title">
+          <span
+            ><el-icon><Bell /></el-icon
+          ></span>
+          <div>
+            <h3>通知投递</h3>
+            <p>审批事件的可靠投递、失败记录与单条重试</p>
+          </div>
+        </div>
+        <el-form-item label="投递状态">
+          <el-select v-model="notificationStatus" aria-label="通知投递状态">
+            <el-option label="全部状态" value="" />
+            <el-option label="待投递" value="PENDING" />
+            <el-option label="投递中" value="PROCESSING" />
+            <el-option label="已送达" value="DELIVERED" />
+            <el-option label="投递失败" value="FAILED" />
+            <el-option label="已跳过" value="SKIPPED" />
+          </el-select>
+        </el-form-item>
+      </header>
+
+      <el-alert
+        title="外部通知默认关闭"
+        description="关闭时审批流程仍正常运行，事件会标记为已跳过且不会补发；配置受控 Webhook 后，可对指定记录手动重试。"
+        type="info"
+        show-icon
+        :closable="false"
+      />
+      <el-alert
+        v-if="notificationsQuery.isError.value"
+        title="通知投递记录加载失败"
+        :description="errorMessage(notificationsQuery.error.value)"
+        type="error"
+        show-icon
+        :closable="false"
+      />
+      <div v-else v-loading="notificationsQuery.isLoading.value" class="notification-table-wrap">
+        <el-empty
+          v-if="!notificationsQuery.isLoading.value && notifications.length === 0"
+          description="当前条件下暂无通知投递记录"
+        />
+        <el-table v-else class="notification-desktop-table" :data="notifications">
+          <el-table-column label="事件" min-width="160">
+            <template #default="scope">
+              <div class="notification-event">
+                <strong>{{ notificationEventLabel(scope.row.eventType) }}</strong>
+                <span>{{ formatDateTime(scope.row.createdAt) }}</span>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column label="接收人" min-width="190">
+            <template #default="scope">
+              {{ scope.row.recipientUser.name || scope.row.recipientUser.email }}
+              <small v-if="scope.row.recipientUser.name">{{ scope.row.recipientUser.email }}</small>
+            </template>
+          </el-table-column>
+          <el-table-column label="内容" min-width="280">
+            <template #default="scope">
+              <div class="notification-content">
+                <strong>{{ scope.row.title }}</strong>
+                <span>{{ scope.row.message }}</span>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column label="状态" width="112">
+            <template #default="scope">
+              <el-tag :type="notificationStatusType(scope.row.status)" effect="plain">
+                {{ notificationStatusLabel(scope.row.status) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="尝试" width="90">
+            <template #default="scope"
+              >{{ scope.row.attempt }}/{{ scope.row.maxAttempts }}</template
+            >
+          </el-table-column>
+          <el-table-column label="最近结果" min-width="180">
+            <template #default="scope">
+              <span>{{ notificationFailureLabel(scope.row.lastErrorCode) }}</span>
+              <small v-if="scope.row.lastStatusCode">HTTP {{ scope.row.lastStatusCode }}</small>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="145" fixed="right">
+            <template #default="scope">
+              <el-tooltip content="打开该通知指向的审批工作区">
+                <el-button
+                  link
+                  type="primary"
+                  :icon="Link"
+                  tag="a"
+                  :href="scope.row.actionUrl"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="打开审批工作区"
+                />
+              </el-tooltip>
+              <el-button
+                v-if="['FAILED', 'SKIPPED'].includes(scope.row.status)"
+                link
+                type="primary"
+                :loading="
+                  retryNotificationMutation.isPending.value &&
+                  retryNotificationMutation.variables.value?.id === scope.row.id
+                "
+                @click="retryNotification(scope.row)"
+                >重试</el-button
+              >
+            </template>
+          </el-table-column>
+        </el-table>
+        <div v-if="notifications.length > 0" class="notification-mobile-list">
+          <article
+            v-for="notification in notifications"
+            :key="notification.id"
+            class="notification-mobile-row"
+          >
+            <header>
+              <strong>{{ notificationEventLabel(notification.eventType) }}</strong>
+              <el-tag :type="notificationStatusType(notification.status)" effect="plain">
+                {{ notificationStatusLabel(notification.status) }}
+              </el-tag>
+            </header>
+            <p>{{ notification.title }}</p>
+            <span>{{ notification.message }}</span>
+            <dl>
+              <div>
+                <dt>接收人</dt>
+                <dd>{{ notification.recipientUser.name || notification.recipientUser.email }}</dd>
+              </div>
+              <div>
+                <dt>投递</dt>
+                <dd>{{ notification.attempt }}/{{ notification.maxAttempts }}</dd>
+              </div>
+              <div>
+                <dt>结果</dt>
+                <dd>{{ notificationFailureLabel(notification.lastErrorCode) }}</dd>
+              </div>
+            </dl>
+            <footer>
+              <el-button
+                link
+                type="primary"
+                :icon="Link"
+                tag="a"
+                :href="notification.actionUrl"
+                target="_blank"
+                rel="noopener noreferrer"
+                >打开审批</el-button
+              >
+              <el-button
+                v-if="['FAILED', 'SKIPPED'].includes(notification.status)"
+                link
+                type="primary"
+                :loading="
+                  retryNotificationMutation.isPending.value &&
+                  retryNotificationMutation.variables.value?.id === notification.id
+                "
+                @click="retryNotificationMutation.mutate(notification)"
+                >重试投递</el-button
+              >
+            </footer>
+          </article>
+        </div>
+      </div>
+      <div v-if="(notificationMeta?.totalPages ?? 0) > 1" class="approval-pagination">
+        <el-pagination
+          v-model:current-page="notificationPage"
+          background
+          layout="prev, pager, next"
+          :page-size="PAGE_SIZE"
+          :total="notificationMeta?.total ?? 0"
+        />
+      </div>
     </section>
 
     <section class="approval-results">
@@ -1014,7 +1268,8 @@ function showMutationError(error: unknown): void {
 }
 .approval-controls,
 .approval-results,
-.compliance-report {
+.compliance-report,
+.notification-report {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fff;
@@ -1036,6 +1291,47 @@ function showMutationError(error: unknown): void {
   display: grid;
   gap: 16px;
   padding: 16px 18px;
+}
+.notification-report {
+  display: grid;
+  gap: 16px;
+  overflow: hidden;
+}
+.notification-report > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px 0;
+}
+.notification-report > header :deep(.el-form-item) {
+  width: 190px;
+  margin-bottom: 0;
+}
+.notification-report > .el-alert {
+  width: auto;
+  margin: 0 18px;
+}
+.notification-table-wrap {
+  min-height: 180px;
+  overflow-x: auto;
+  border-top: 1px solid var(--line);
+}
+.notification-event,
+.notification-content {
+  display: grid;
+  gap: 4px;
+}
+.notification-event span,
+.notification-content span,
+.notification-report small {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.notification-mobile-list {
+  display: none;
 }
 .compliance-report > header {
   display: flex;
@@ -1327,6 +1623,55 @@ function showMutationError(error: unknown): void {
   }
   .compliance-report > header {
     align-items: flex-start;
+  }
+  .notification-report > header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .notification-report > header :deep(.el-form-item) {
+    width: 100%;
+  }
+  .notification-desktop-table {
+    display: none;
+  }
+  .notification-mobile-list {
+    display: grid;
+  }
+  .notification-mobile-row {
+    display: grid;
+    gap: 10px;
+    padding: 15px 14px;
+    border-bottom: 1px solid var(--line);
+  }
+  .notification-mobile-row:last-child {
+    border-bottom: 0;
+  }
+  .notification-mobile-row header,
+  .notification-mobile-row footer,
+  .notification-mobile-row dl {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .notification-mobile-row p,
+  .notification-mobile-row span,
+  .notification-mobile-row dl {
+    margin: 0;
+  }
+  .notification-mobile-row > span,
+  .notification-mobile-row dt {
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1.5;
+  }
+  .notification-mobile-row dl > div {
+    display: grid;
+    gap: 3px;
+  }
+  .notification-mobile-row dd {
+    margin: 0;
+    font-size: 12px;
   }
   .compliance-filters {
     grid-template-columns: 1fr;

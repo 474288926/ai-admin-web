@@ -4,12 +4,16 @@ import type {
   ApprovalComplianceReportSummary,
   ApprovalReportStatus,
   ApprovalReportType,
+  ApprovalNotification,
+  ApprovalNotificationEventType,
+  ApprovalNotificationStatus,
   KnowledgeApproval,
   KnowledgeApprovalCapabilities,
   KnowledgeApprovalDecision,
   KnowledgeApprovalRole,
   KnowledgeApprovalStatus,
   PaginatedKnowledgeApprovals,
+  PaginatedApprovalNotifications,
 } from '@/types/knowledge-approval'
 import { apiRequest } from './client'
 
@@ -149,6 +153,41 @@ const complianceReportSummarySchema = z.object({
   }),
   generatedAt: z.iso.datetime(),
   controls: z.object({ reportIsReadOnly: z.boolean() }),
+})
+const notificationStatusSchema = z.enum(['PENDING', 'PROCESSING', 'DELIVERED', 'FAILED', 'SKIPPED'])
+const notificationEventTypeSchema = z.enum([
+  'DOCUMENT_PREPARATION_ASSIGNED',
+  'DOCUMENT_APPROVAL_CREATED',
+  'DOCUMENT_APPROVAL_ASSIGNED',
+  'DOCUMENT_APPROVAL_DECIDED',
+])
+const notificationAttemptSchema = z.object({
+  id: z.uuid(),
+  attempt: z.number().int().positive(),
+  trigger: z.enum(['AUTOMATIC', 'MANUAL']),
+  status: notificationStatusSchema,
+  statusCode: z.number().int().nullable(),
+  errorCode: z.string().nullable(),
+  attemptedAt: z.iso.datetime(),
+})
+const approvalNotificationSchema = z.object({
+  id: z.uuid(),
+  eventType: notificationEventTypeSchema,
+  status: notificationStatusSchema,
+  title: z.string(),
+  message: z.string(),
+  actionUrl: z.url(),
+  attempt: z.number().int().nonnegative(),
+  maxAttempts: z.number().int().positive(),
+  nextAttemptAt: z.iso.datetime(),
+  lastAttemptAt: z.iso.datetime().nullable(),
+  deliveredAt: z.iso.datetime().nullable(),
+  lastStatusCode: z.number().int().nullable(),
+  lastErrorCode: z.string().nullable(),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+  recipientUser: userSchema,
+  attempts: z.array(notificationAttemptSchema),
 })
 
 function complianceReportParams(input: {
@@ -291,4 +330,31 @@ export async function reissueKnowledgeApproval(
 
 export function exportKnowledgeApproval(id: string): Promise<unknown> {
   return apiRequest<unknown>(`/knowledge-approvals/${id}/export`)
+}
+
+export async function listApprovalNotifications(input: {
+  organizationId: string
+  page?: number
+  pageSize?: number
+  status?: ApprovalNotificationStatus
+  eventType?: ApprovalNotificationEventType
+}): Promise<PaginatedApprovalNotifications> {
+  const params = new URLSearchParams({
+    organizationId: input.organizationId,
+    page: String(input.page ?? 1),
+    pageSize: String(input.pageSize ?? 20),
+  })
+  if (input.status) params.set('status', input.status)
+  if (input.eventType) params.set('eventType', input.eventType)
+  return z
+    .object({ items: z.array(approvalNotificationSchema), meta: paginationSchema })
+    .parse(await apiRequest<unknown>(`/knowledge-approvals/notifications?${params}`))
+}
+
+export async function retryApprovalNotification(id: string): Promise<ApprovalNotification> {
+  return approvalNotificationSchema.parse(
+    await apiRequest<unknown>(`/knowledge-approvals/notifications/${id}/retry`, {
+      method: 'POST',
+    }),
+  )
 }

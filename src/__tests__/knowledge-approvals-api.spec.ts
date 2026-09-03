@@ -6,7 +6,9 @@ import {
   exportApprovalComplianceReport,
   getApprovalComplianceReportSummary,
   getKnowledgeApprovalCapabilities,
+  listApprovalNotifications,
   listKnowledgeApprovals,
+  retryApprovalNotification,
 } from '@/services/api/knowledge-approvals'
 
 const organizationId = '899c640e-f020-4116-92a7-f596245c457c'
@@ -223,5 +225,88 @@ describe('knowledge approvals api', () => {
       type: 'ALL',
       status: 'ALL',
     })
+  })
+
+  it('loads approval notification delivery records with status filters', async () => {
+    const notificationId = '70cc8dba-16c7-4589-bac3-c58c42e37e52'
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          items: [
+            {
+              id: notificationId,
+              eventType: 'DOCUMENT_APPROVAL_CREATED',
+              status: 'FAILED',
+              title: '文档受众审批 DBA-20260903-TEST0001',
+              message: '新的文档受众审批已指派给你。',
+              actionUrl: 'http://192.168.1.20:5173/approvals/documents',
+              attempt: 3,
+              maxAttempts: 3,
+              nextAttemptAt: '2026-09-03T00:00:00.000Z',
+              lastAttemptAt: '2026-09-03T00:01:00.000Z',
+              deliveredAt: null,
+              lastStatusCode: 502,
+              lastErrorCode: 'REMOTE_5XX',
+              createdAt: '2026-09-03T00:00:00.000Z',
+              updatedAt: '2026-09-03T00:01:00.000Z',
+              recipientUser: user,
+              attempts: [],
+            },
+          ],
+          meta: { page: 1, pageSize: 20, total: 1, totalPages: 1, hasNextPage: false },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await listApprovalNotifications({
+      organizationId,
+      status: 'FAILED',
+    })
+
+    const requestUrl = new URL(String(fetchMock.mock.calls[0]?.[0]), 'http://localhost')
+    expect(requestUrl.pathname).toContain('/knowledge-approvals/notifications')
+    expect(Object.fromEntries(requestUrl.searchParams)).toMatchObject({
+      organizationId,
+      status: 'FAILED',
+    })
+    expect(result.items[0]?.lastErrorCode).toBe('REMOTE_5XX')
+  })
+
+  it('retries one approval notification through the dedicated endpoint', async () => {
+    const notificationId = '70cc8dba-16c7-4589-bac3-c58c42e37e52'
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: notificationId,
+          eventType: 'DOCUMENT_APPROVAL_CREATED',
+          status: 'PENDING',
+          title: '文档受众审批 DBA-20260903-TEST0001',
+          message: '新的文档受众审批已指派给你。',
+          actionUrl: 'http://192.168.1.20:5173/approvals/documents',
+          attempt: 3,
+          maxAttempts: 6,
+          nextAttemptAt: '2026-09-03T00:02:00.000Z',
+          lastAttemptAt: '2026-09-03T00:01:00.000Z',
+          deliveredAt: null,
+          lastStatusCode: 502,
+          lastErrorCode: null,
+          createdAt: '2026-09-03T00:00:00.000Z',
+          updatedAt: '2026-09-03T00:02:00.000Z',
+          recipientUser: user,
+          attempts: [],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    await retryApprovalNotification(notificationId)
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining(`/knowledge-approvals/notifications/${notificationId}/retry`),
+      expect.objectContaining({ method: 'POST' }),
+    )
   })
 })
